@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -23,18 +23,19 @@
 #include <string.h>
 
 #include "platform.h"
-
-#if defined(USE_SPEKTRUM_CMS_TELEMETRY)
+#if defined (USE_SPEKTRUM_CMS_TELEMETRY) && defined (USE_CMS) && defined(USE_TELEMETRY_SRXL)
 
 #include "cms/cms.h"
 
 #include "common/utils.h"
 
+#include "config/feature.h"
+
 #include "drivers/display.h"
 
-#include "telemetry/srxl.h"
+#include "rx/rx.h"
 
-#include "displayport_srxl.h"
+#include "telemetry/srxl.h"
 
 displayPort_t srxlDisplayPort;
 
@@ -101,7 +102,7 @@ static int srxlHeartbeat(displayPort_t *displayPort)
     return 0;
 }
 
-static void srxlRedraw(displayPort_t *displayPort)
+static void srxlResync(displayPort_t *displayPort)
 {
     UNUSED(displayPort);
 }
@@ -134,7 +135,7 @@ static const displayPortVTable_t srxlVTable = {
     .writeChar = srxlWriteChar,
     .isTransferInProgress = srxlIsTransferInProgress,
     .heartbeat = srxlHeartbeat,
-    .redraw = srxlRedraw,
+    .resync = srxlResync,
     .isSynced = srxlIsSynced,
     .txBytesFree = srxlTxBytesFree,
     .layerSupported = NULL,
@@ -142,18 +143,20 @@ static const displayPortVTable_t srxlVTable = {
     .layerCopy = NULL,
 };
 
-static displayPort_t *displayPortSrxlInit()
+displayPort_t *displayPortSrxlInit()
 {
-    srxlDisplayPort.device = NULL;
-    displayInit(&srxlDisplayPort, &srxlVTable, DISPLAYPORT_DEVICE_TYPE_SRXL);
-    srxlDisplayPort.rows = SPEKTRUM_SRXL_TEXTGEN_BUFFER_ROWS;
-    srxlDisplayPort.cols = SPEKTRUM_SRXL_TEXTGEN_BUFFER_COLS;
+    if (featureIsEnabled(FEATURE_TELEMETRY)
+        && featureIsEnabled(FEATURE_RX_SERIAL)
+        && ((rxConfig()->serialrx_provider == SERIALRX_SRXL) || (rxConfig()->serialrx_provider == SERIALRX_SRXL2))) {
 
-    return &srxlDisplayPort;
+        srxlDisplayPort.device = NULL;
+        displayInit(&srxlDisplayPort, &srxlVTable);
+        srxlDisplayPort.rows = SPEKTRUM_SRXL_TEXTGEN_BUFFER_ROWS;
+        srxlDisplayPort.cols = SPEKTRUM_SRXL_TEXTGEN_BUFFER_COLS;
+        return &srxlDisplayPort;
+    } else {
+        return NULL;
+    }
 }
 
-void srxlDisplayportRegister(void)
-{
-    cmsDisplayPortRegister(displayPortSrxlInit());
-}
 #endif

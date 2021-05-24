@@ -259,7 +259,7 @@ protected:
             .thrMid8 = 0,
             .thrExpo8 = 0,
             .rates = {0, 0, 0},
-            .dynThr[0] = 0,
+            .dynThrPID = 0,
             .rcExpo[FD_YAW] = 0,
             .tpa_breakpoint = 0
     };
@@ -287,7 +287,7 @@ protected:
         controlRateConfig.rates[0] = 0;
         controlRateConfig.rates[1] = 0;
         controlRateConfig.rates[2] = 0;
-        controlRateConfig.dynThr[0] = 0;
+        controlRateConfig.dynThrPID = 0;
         controlRateConfig.tpa_breakpoint = 0;
 
         PG_RESET(adjustmentRanges);
@@ -365,7 +365,7 @@ TEST_F(RcControlsAdjustmentsTest, processRcAdjustmentsWithRcRateFunctionSwitchUp
             .thrMid8 = 0,
             .thrExpo8 = 0,
             .rates = {0,0,0},
-            .dynThr[0] = 0,
+            .dynThrPID = 0,
             .rcExpo[FD_YAW] = 0,
             .tpa_breakpoint = 0
     };
@@ -640,7 +640,7 @@ uint8_t armingFlags = 0;
 uint16_t flightModeFlags = 0;
 int16_t heading;
 uint8_t stateFlags = 0;
-float rcData[MAX_SUPPORTED_RC_CHANNEL_COUNT];
+int16_t rcData[MAX_SUPPORTED_RC_CHANNEL_COUNT];
 pidProfile_t *currentPidProfile;
 rxRuntimeState_t rxRuntimeState;
 PG_REGISTER(blackboxConfig_t, blackboxConfig, PG_BLACKBOX_CONFIG, 0);
@@ -655,5 +655,4 @@ void resetTryingToArm(void) {}
 void setLedProfile(uint8_t profile) { UNUSED(profile); }
 uint8_t getLedProfile(void) { return 0; }
 void compassStartCalibration(void) {}
-void pinioBoxTaskControl(void) {}
 }

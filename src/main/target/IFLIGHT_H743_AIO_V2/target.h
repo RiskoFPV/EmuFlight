@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -108,17 +108,14 @@
 
 #define BARO_I2C_INSTANCE       (I2CDEV_1)
 #define USE_BARO
-#define DEFAULT_BARO_DPS310I2CDEV_1
 #define USE_BARO_MS5611
 #define USE_BARO_BMP280
-#define USE_BARO_DPS310
 
 #define USE_GYRO
 #define USE_ACC
 #define USE_GYRO_SPI_MPU6000
 #define USE_ACC_SPI_MPU6000
 #define USE_ACCGYRO_BMI270
-#define USE_ACCGYRO_LSM6DSO
 
 #define USE_EXTI
 #define USE_GYRO_EXTI
@@ -183,7 +180,7 @@
 #define DEFAULT_VOLTAGE_METER_SOURCE VOLTAGE_METER_ADC
 #define DEFAULT_CURRENT_METER_SOURCE CURRENT_METER_ADC
 
-#define CURRENT_METER_SCALE_DEFAULT 100
+#define CURRENT_METER_SCALE_DEFAULT 200
 
 #define DEFAULT_RX_FEATURE      FEATURE_RX_SERIAL
 #define DEFAULT_FEATURES        (FEATURE_RSSI_ADC | FEATURE_TELEMETRY | FEATURE_OSD | FEATURE_LED_STRIP)

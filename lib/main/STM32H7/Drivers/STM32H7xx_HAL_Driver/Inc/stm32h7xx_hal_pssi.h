@@ -239,9 +239,6 @@ typedef enum
 
 #define PSSI_FLAG_RTT1B             PSSI_SR_RTT1B    /*!< 1 Byte Fifo Flag*/
 #define PSSI_FLAG_RTT4B             PSSI_SR_RTT4B    /*!< 4 Bytes Fifo Flag*/
-
-
-
 /**
   * @}
   */
@@ -256,9 +253,6 @@ typedef enum
 /**
   * @}
   */
-
-
-
 /**
   * @}
   */
@@ -409,7 +403,6 @@ typedef enum
   * @}
   */
 
-
 /* Exported functions --------------------------------------------------------*/
 /** @addtogroup PSSI_Exported_Functions
   * @{
@@ -418,7 +411,6 @@ typedef enum
 /** @addtogroup PSSI_Exported_Functions_Group1
   * @{
   */
-
 /* Initialization and de-initialization functions *******************************/
 HAL_StatusTypeDef HAL_PSSI_Init(PSSI_HandleTypeDef *hpssi);
 HAL_StatusTypeDef HAL_PSSI_DeInit(PSSI_HandleTypeDef *hpssi);
@@ -428,8 +420,6 @@ void              HAL_PSSI_MspDeInit(PSSI_HandleTypeDef *hpssi);
 
 HAL_StatusTypeDef HAL_PSSI_RegisterCallback(PSSI_HandleTypeDef *hpssi, HAL_PSSI_CallbackIDTypeDef CallbackID, pPSSI_CallbackTypeDef pCallback);
 HAL_StatusTypeDef HAL_PSSI_UnRegisterCallback(PSSI_HandleTypeDef *hpssi, HAL_PSSI_CallbackIDTypeDef CallbackID);
-
-
 /**
   * @}
   */
@@ -437,7 +427,6 @@ HAL_StatusTypeDef HAL_PSSI_UnRegisterCallback(PSSI_HandleTypeDef *hpssi, HAL_PSS
 /** @addtogroup PSSI_Exported_Functions_Group2
   * @{
   */
-
 /* IO operation functions *******************************************************/
 HAL_StatusTypeDef HAL_PSSI_Transmit(PSSI_HandleTypeDef *hpssi, uint8_t *pData, uint32_t Size, uint32_t Timeout);
 HAL_StatusTypeDef HAL_PSSI_Receive(PSSI_HandleTypeDef *hpssi, uint8_t *pData, uint32_t Size, uint32_t Timeout);
@@ -445,7 +434,6 @@ HAL_StatusTypeDef HAL_PSSI_Transmit_DMA(PSSI_HandleTypeDef *hpssi, uint32_t *pDa
 HAL_StatusTypeDef HAL_PSSI_Receive_DMA(PSSI_HandleTypeDef *hpssi, uint32_t *pData, uint32_t Size);
 HAL_StatusTypeDef HAL_PSSI_Abort_DMA(PSSI_HandleTypeDef *hpssi);
 void HAL_PSSI_IRQHandler(PSSI_HandleTypeDef *hpssi);
-
 /**
   * @}
   */
@@ -453,13 +441,10 @@ void HAL_PSSI_IRQHandler(PSSI_HandleTypeDef *hpssi);
 /** @addtogroup PSSI_Exported_Functions_Group3
   * @{
   */
-
 void HAL_PSSI_TxCpltCallback(PSSI_HandleTypeDef *hpssi);
 void HAL_PSSI_RxCpltCallback(PSSI_HandleTypeDef *hpssi);
 void HAL_PSSI_ErrorCallback(PSSI_HandleTypeDef *hpssi);
 void HAL_PSSI_AbortCpltCallback(PSSI_HandleTypeDef *hpssi);
-
-
 /**
   * @}
   */
@@ -467,11 +452,9 @@ void HAL_PSSI_AbortCpltCallback(PSSI_HandleTypeDef *hpssi);
 /** @addtogroup PSSI_Exported_Functions_Group4
   * @{
   */
-
 /* Peripheral State functions ***************************************************/
 HAL_PSSI_StateTypeDef HAL_PSSI_GetState(PSSI_HandleTypeDef *hpssi);
-uint32_t               HAL_PSSI_GetError(PSSI_HandleTypeDef *hpssi);
-
+uint32_t              HAL_PSSI_GetError(PSSI_HandleTypeDef *hpssi);
 /**
   * @}
   */

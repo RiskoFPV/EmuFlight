@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -95,14 +95,6 @@ const adcDevice_t adcHardware[ADCDEV_COUNT] = {
 
 adcDevice_t adcDevice[ADCDEV_COUNT];
 
-#if defined(STM32H743xx) || defined(STM32H750xx) || defined(STM32H723xx) || defined(STM32H725xx)
-#define ADC_DEVICE_FOR_INTERNAL ADC_DEVICES_3
-#elif defined(STM32H7A3xx) || defined(STM32H7A3xxQ)
-#define ADC_DEVICE_FOR_INTERNAL ADC_DEVICES_2
-#else
-#error Unknown MCU
-#endif
-
 /* note these could be packed up for saving space */
 const adcTagMap_t adcTagMap[] = {
 #ifdef USE_ADC_INTERNAL
@@ -110,14 +102,8 @@ const adcTagMap_t adcTagMap[] = {
     // Keep these at the beginning for easy indexing by ADC_TAG_MAP_{VREFINT,TEMPSENSOR}
 #define ADC_TAG_MAP_VREFINT    0
 #define ADC_TAG_MAP_TEMPSENSOR 1
-
-#if defined(STM32H743xx) || defined(STM32H750xx) || defined(STM32H7A3xx) || defined(STM32H7A3xxQ)
-    { DEFIO_TAG_E__NONE, ADC_DEVICE_FOR_INTERNAL,   ADC_CHANNEL_VREFINT,    18 },
-    { DEFIO_TAG_E__NONE, ADC_DEVICE_FOR_INTERNAL,   ADC_CHANNEL_TEMPSENSOR, 17 },
-#elif defined(STM32H723xx) || defined(STM32H725xx)
-    { DEFIO_TAG_E__NONE, ADC_DEVICE_FOR_INTERNAL,   ADC_CHANNEL_VREFINT,    18 },
-    { DEFIO_TAG_E__NONE, ADC_DEVICE_FOR_INTERNAL,   ADC_CHANNEL_TEMPSENSOR, 19 },
-#endif
+    { DEFIO_TAG_E__NONE, ADC_DEVICES_3,   ADC_CHANNEL_VREFINT,    18 },
+    { DEFIO_TAG_E__NONE, ADC_DEVICES_3,   ADC_CHANNEL_TEMPSENSOR, 19 },
 #endif
 #if defined(STM32H7A3xx) || defined(STM32H7A3xxQ)
     // See DS13195 Rev 6 Page 51/52
@@ -211,19 +197,7 @@ void adcInitDevice(adcDevice_t *adcdev, int channelCount)
     hadc->Init.NbrOfDiscConversion      = 1;                             // Don't care
     hadc->Init.ExternalTrigConv         = ADC_SOFTWARE_START;
     hadc->Init.ExternalTrigConvEdge     = ADC_EXTERNALTRIGCONVEDGE_NONE; // Don't care
-
-    // Enable circular DMA.
-    // ADC3 of H72X and H73X has a special way of doing this.
-#if defined(STM32H723xx) || defined(STM32H725xx)
-    if (adcdev->ADCx == ADC3) {
-        hadc->Init.DMAContinuousRequests = ENABLE;
-    } else
-#else
-    {
-        hadc->Init.ConversionDataManagement = ADC_CONVERSIONDATA_DMA_CIRCULAR;
-    }
-#endif
-
+    hadc->Init.ConversionDataManagement = ADC_CONVERSIONDATA_DMA_CIRCULAR;
     hadc->Init.Overrun                  = ADC_OVR_DATA_OVERWRITTEN;
     hadc->Init.OversamplingMode         = DISABLE;
 
@@ -250,21 +224,11 @@ int adcFindTagMapEntry(ioTag_t tag)
     return -1;
 }
 
-// H743, H750 and H7A3 seems to use 16-bit precision value,
-// while H723 and H725 seems to use 12-bit precision value.
-#if defined(STM32H743xx) || defined(STM32H750xx) || defined(STM32H7A3xx) || defined(STM32H7A3xxQ)
-#define VREFINT_CAL_SHIFT 4
-#elif defined(STM32H723xx) || defined(STM32H725xx)
-#define VREFINT_CAL_SHIFT 0
-#else
-#error Unknown MCU
-#endif
-
 void adcInitCalibrationValues(void)
 {
-    adcVREFINTCAL = *VREFINT_CAL_ADDR >> VREFINT_CAL_SHIFT;
-    adcTSCAL1 = *TEMPSENSOR_CAL1_ADDR >> VREFINT_CAL_SHIFT;
-    adcTSCAL2 = *TEMPSENSOR_CAL2_ADDR >> VREFINT_CAL_SHIFT;
+    adcVREFINTCAL = *(uint16_t *)VREFINT_CAL_ADDR >> 4;
+    adcTSCAL1 = *TEMPSENSOR_CAL1_ADDR >> 4;
+    adcTSCAL2 = *TEMPSENSOR_CAL2_ADDR >> 4;
     adcTSSlopeK = (TEMPSENSOR_CAL2_TEMP - TEMPSENSOR_CAL1_TEMP) * 1000 / (adcTSCAL2 - adcTSCAL1);
 }
 
@@ -305,10 +269,10 @@ void adcInit(const adcConfig_t *config)
 
         if (i == ADC_TEMPSENSOR) {
             map = ADC_TAG_MAP_TEMPSENSOR;
-            dev = ffs(adcTagMap[map].devices) - 1;
+            dev = ADCDEV_3;
         } else if (i == ADC_VREFINT) {
             map = ADC_TAG_MAP_VREFINT;
-            dev = ffs(adcTagMap[map].devices) - 1;
+            dev = ADCDEV_3;
         } else {
             if (!adcOperatingConfig[i].tag) {
                 continue;

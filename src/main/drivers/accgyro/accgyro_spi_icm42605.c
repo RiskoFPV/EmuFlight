@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -42,12 +42,6 @@
 #include "drivers/io.h"
 #include "drivers/sensor.h"
 #include "drivers/time.h"
-
-// 24 MHz max SPI frequency
-#define ICM42605_MAX_SPI_CLK_HZ 24000000
-
-// 10 MHz max SPI frequency for intialisation
-#define ICM42605_MAX_SPI_INIT_CLK_HZ 1000000
 
 #define ICM42605_RA_PWR_MGMT0                       0x4E
 
@@ -104,7 +98,7 @@ static void icm42605SpiInit(const busDevice_t *bus)
     }
 
 
-    spiSetDivisor(bus->busdev_u.spi.instance, spiCalculateDivider(ICM42605_MAX_SPI_CLK_HZ));
+    spiSetDivisor(bus->busdev_u.spi.instance, SPI_CLOCK_STANDARD);
 
     hardwareInitialised = true;
 }
@@ -113,7 +107,7 @@ uint8_t icm42605SpiDetect(const busDevice_t *bus)
 {
     icm42605SpiInit(bus);
 
-    spiSetDivisor(bus->busdev_u.spi.instance, spiCalculateDivider(ICM42605_MAX_SPI_INIT_CLK_HZ));
+    spiSetDivisor(bus->busdev_u.spi.instance, SPI_CLOCK_INITIALIZATION); //low speed
 
     spiBusWriteRegister(bus, ICM42605_RA_PWR_MGMT0, 0x00);
 
@@ -138,7 +132,7 @@ uint8_t icm42605SpiDetect(const busDevice_t *bus)
         }
     } while (attemptsRemaining--);
 
-    spiSetDivisor(bus->busdev_u.spi.instance, spiCalculateDivider(ICM42605_MAX_SPI_CLK_HZ));
+    spiSetDivisor(bus->busdev_u.spi.instance, SPI_CLOCK_STANDARD);
 
     return icmDetected;
 }
@@ -194,7 +188,7 @@ void icm42605GyroInit(gyroDev_t *gyro)
 {
     mpuGyroInit(gyro);
 
-    spiSetDivisor(gyro->bus.busdev_u.spi.instance, spiCalculateDivider(ICM42605_MAX_SPI_INIT_CLK_HZ));
+    spiSetDivisor(gyro->bus.busdev_u.spi.instance, SPI_CLOCK_INITIALIZATION);
 
     spiBusWriteRegister(&gyro->bus, ICM42605_RA_PWR_MGMT0, ICM42605_PWR_MGMT0_TEMP_DISABLE_OFF | ICM42605_PWR_MGMT0_ACCEL_MODE_LN | ICM42605_PWR_MGMT0_GYRO_MODE_LN);
     delay(15);
@@ -244,7 +238,7 @@ void icm42605GyroInit(gyroDev_t *gyro)
 #endif
     //
 
-    spiSetDivisor(gyro->bus.busdev_u.spi.instance, spiCalculateDivider(ICM42605_MAX_SPI_CLK_HZ));
+    spiSetDivisor(gyro->bus.busdev_u.spi.instance, SPI_CLOCK_STANDARD);
 }
 
 bool icm42605GyroReadSPI(gyroDev_t *gyro)
@@ -276,7 +270,8 @@ bool icm42605SpiGyroDetect(gyroDev_t *gyro)
     gyro->initFn = icm42605GyroInit;
     gyro->readFn = icm42605GyroReadSPI;
 
-    gyro->scale = GYRO_SCALE_2000DPS;
+    // 16.4 dps/lsb scalefactor
+    gyro->scale = 1.0f / 16.4f;
 
     return true;
 }

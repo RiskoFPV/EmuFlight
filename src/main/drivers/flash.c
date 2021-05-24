@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -37,11 +37,6 @@
 #include "drivers/bus_quadspi.h"
 #include "drivers/io.h"
 #include "drivers/time.h"
-
-// 20 MHz max SPI frequency
-#define FLASH_MAX_SPI_CLK_HZ 20000000
-// 5 MHz max SPI init frequency
-#define FLASH_MAX_SPI_INIT_CLK 5000000
 
 static busDevice_t busInstance;
 static busDevice_t *busdev;
@@ -128,10 +123,12 @@ static bool flashSpiInit(const flashConfig_t *flashConfig)
     IOHi(busdev->busdev_u.spi.csnPin);
 
 #ifdef USE_SPI_TRANSACTION
-    spiBusTransactionInit(busdev, SPI_MODE3_POL_HIGH_EDGE_2ND, spiCalculateDivider(FLASH_MAX_SPI_INIT_CLK));
+    spiBusTransactionInit(busdev, SPI_MODE3_POL_HIGH_EDGE_2ND, SPI_CLOCK_FAST);
 #else
 #ifndef FLASH_SPI_SHARED
-    spiSetDivisor(busdev->busdev_u.spi.instance, spiCalculateDivider(FLASH_MAX_SPI_INIT_CLK));
+    //Maximum speed for standard READ command is 20mHz, other commands tolerate 25mHz
+    //spiSetDivisor(busdev->busdev_u.spi.instance, SPI_CLOCK_FAST);
+    spiSetDivisor(busdev->busdev_u.spi.instance, SPI_CLOCK_STANDARD*2);
 #endif
 #endif
 
@@ -306,7 +303,7 @@ static void flashConfigurePartitions(void)
         endSector = badBlockPartition->startSector - 1;
     }
 
-#if defined(FIRMWARE_SIZE)
+#if defined(FIRMWARE_SIZE) && !defined(USE_BRAINFPV_BOOTLOADER)
     const uint32_t firmwareSize = (FIRMWARE_SIZE * 1024);
     flashSector_t firmwareSectors = (firmwareSize / flashGeometry->sectorSize);
 
@@ -402,7 +399,6 @@ const char *flashPartitionGetTypeName(flashPartitionType_e type)
 bool flashInit(const flashConfig_t *flashConfig)
 {
     memset(&flashPartitionTable, 0x00, sizeof(flashPartitionTable));
-    flashPartitions = 0;
 
     bool haveFlash = flashDeviceInit(flashConfig);
 

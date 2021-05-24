@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -36,17 +36,19 @@ typedef enum {
     MAG_AK8975 = 3,
     MAG_AK8963 = 4,
     MAG_QMC5883 = 5,
-    MAG_LIS3MDL = 6,
-    MAG_MPU925X_AK8963 = 7
+    MAG_LIS3MDL = 6
 } magSensor_e;
 
 typedef struct mag_s {
     float magADC[XYZ_AXIS_COUNT];
+    float magneticDeclination;
 } mag_t;
 
 extern mag_t mag;
 
 typedef struct compassConfig_s {
+    int16_t mag_declination;                // Get your magnetic decliniation from here : http://magnetic-declination.com/
+                                            // For example, -6deg 37min, = -637 Japan, format is [sign]dddmm (degreesminutes) default is zero.
     uint8_t mag_alignment;                  // mag alignment
     uint8_t mag_hardware;                   // Which mag hardware to use on boards with more than one device
     uint8_t mag_bustype;

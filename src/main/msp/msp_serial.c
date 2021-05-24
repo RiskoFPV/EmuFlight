@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -562,10 +562,7 @@ int mspSerialPush(serialPortIdentifier_e port, uint8_t cmd, uint8_t *data, int d
         mspPort_t * const mspPort = &mspPorts[portIndex];
 
         // XXX Kludge!!! Avoid zombie VCP port (avoid VCP entirely for now)
-        if (!mspPort->port
-#ifndef USE_MSP_PUSH_OVER_VCP
-            || mspPort->port->identifier == SERIAL_PORT_USB_VCP
-#endif
+        if (!mspPort->port || mspPort->port->identifier == SERIAL_PORT_USB_VCP
             || (port != SERIAL_PORT_ALL && mspPort->port->identifier != port)) {
             continue;
         }

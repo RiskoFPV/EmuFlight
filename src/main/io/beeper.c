@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -40,6 +40,9 @@
 #include "fc/core.h"
 #include "fc/runtime_config.h"
 
+#include "drivers/io.h"
+#include "drivers/io_def.h"
+#include "io/beeper.h"
 #include "io/statusindicator.h"
 #include "io/vtx_control.h"
 
@@ -241,7 +244,7 @@ void beeper(beeperMode_e mode)
         mode == BEEPER_SILENCE || (
             (beeperConfig()->beeper_off_flags & BEEPER_GET_FLAG(BEEPER_USB))
             && getBatteryState() == BATTERY_NOT_PRESENT
-        ) || IS_RC_MODE_ACTIVE(BOXBEEPERMUTE)
+        )
     ) {
         beeperSilence();
         return;

@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -49,25 +49,9 @@ typedef struct laggedMovingAverage_s {
     bool primed;
 } laggedMovingAverage_t;
 
-typedef struct alphaBetaGammaFilter_s {
-    float a, b, g, e;
-    float ak, vk, xk, jk, rk;
-    float dT, dT2, dT3;
-    float halfLife, boost;
-    pt1Filter_t boostFilter, velFilter, accFilter, jerkFilter;
-} alphaBetaGammaFilter_t;
-
-typedef struct ptnFilter_s {
-    float state[5];
-    float k;
-    uint8_t order;
-} ptnFilter_t;
-
 typedef enum {
     FILTER_PT1 = 0,
-    FILTER_PT2,
-    FILTER_PT3,
-    FILTER_PT4,
+    FILTER_BIQUAD,
 } lowpassFilterType_e;
 
 typedef enum {
@@ -99,14 +83,3 @@ float pt1FilterApply(pt1Filter_t *filter, float input);
 
 void slewFilterInit(slewFilter_t *filter, float slewLimit, float threshold);
 float slewFilterApply(slewFilter_t *filter, float input);
-
-void ABGInit(alphaBetaGammaFilter_t *filter, float alpha, int boostGain, int halfLife, float dT);
-float alphaBetaGammaApply(alphaBetaGammaFilter_t *filter, float input);
-float ABGVelocity(alphaBetaGammaFilter_t *filter);
-float ABGAcceleration(alphaBetaGammaFilter_t *filter);
-float ABGJerk(alphaBetaGammaFilter_t *filter);
-float ABGResidualError(alphaBetaGammaFilter_t *filter);
-
-void ptnFilterInit(ptnFilter_t *filter, uint8_t order, uint16_t f_cut, float dT);
-void ptnFilterUpdate(ptnFilter_t *filter, float f_cut, float ScaleF, float dt);
-float ptnFilterApply(ptnFilter_t *filter, float input);

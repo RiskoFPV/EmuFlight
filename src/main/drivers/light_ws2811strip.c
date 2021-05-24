@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -44,29 +44,26 @@
 
 #include "light_ws2811strip.h"
 
-#ifdef USE_LEDSTRIP_CACHE_MGMT
-// WS2811_DMA_BUFFER_SIZE is multiples of uint32_t
-// Number of bytes required for buffer
-#define WS2811_DMA_BUF_BYTES              (WS2811_DMA_BUFFER_SIZE * sizeof (uint32_t))
-// Number of bytes required to cache align buffer
-#define WS2811_DMA_BUF_CACHE_ALIGN_BYTES  ((WS2811_DMA_BUF_BYTES + 0x20) & ~0x1f)
-// Size of array to create a cache aligned buffer
-#define WS2811_DMA_BUF_CACHE_ALIGN_LENGTH (WS2811_DMA_BUF_CACHE_ALIGN_BYTES / sizeof (uint32_t))
-__attribute__((aligned(32))) uint32_t ledStripDMABuffer[WS2811_DMA_BUF_CACHE_ALIGN_LENGTH];
-#else
+
+#ifndef USE_BRAINFPV_FPGA
 #if defined(STM32F1) || defined(STM32F3)
 uint8_t ledStripDMABuffer[WS2811_DMA_BUFFER_SIZE];
 #elif defined(STM32F7)
-FAST_DATA_ZERO_INIT uint32_t ledStripDMABuffer[WS2811_DMA_BUFFER_SIZE];
+FAST_RAM_ZERO_INIT uint32_t ledStripDMABuffer[WS2811_DMA_BUFFER_SIZE];
 #elif defined(STM32H7)
 DMA_RAM uint32_t ledStripDMABuffer[WS2811_DMA_BUFFER_SIZE];
 #else
 uint32_t ledStripDMABuffer[WS2811_DMA_BUFFER_SIZE];
 #endif
+#else
+#include "fpga_drv.h"
 #endif
 
+#ifndef USE_BRAINFPV_FPGA
 static ioTag_t ledStripIoTag;
 static bool ws2811Initialised = false;
+#endif
+
 volatile bool ws2811LedDataTransferInProgress = false;
 static unsigned usedLedCount = 0;
 static bool needsFullRefresh = true;
@@ -123,10 +120,21 @@ void setUsedLedCount(unsigned ledCount)
 
 void ws2811LedStripInit(ioTag_t ioTag)
 {
+#ifndef USE_BRAINFPV_FPGA
     memset(ledStripDMABuffer, 0, sizeof(ledStripDMABuffer));
 
+    const hsvColor_t hsv_white = { 0, 255, 255 };
+    setStripColor(&hsv_white);
+
     ledStripIoTag = ioTag;
+#else
+    (void)ioTag;
+#endif
+    // RGB or GRB ordering doesn't matter for white
+    ws2811UpdateStrip(LED_RGB);
 }
+
+#ifndef USE_BRAINFPV_FPGA
 
 void ws2811LedStripEnable(void)
 {
@@ -134,7 +142,8 @@ void ws2811LedStripEnable(void)
         if (!ws2811LedStripHardwareInit(ledStripIoTag)) {
             return;
         }
-
+STATIC_UNIT_TESTED uint16_t dmaBufferOffset;
+static int16_t ledIndex;
         const hsvColor_t hsv_black = { 0, 0, 0 };
         setStripColor(&hsv_black);
         // RGB or GRB ordering doesn't matter for black
@@ -195,12 +204,52 @@ void ws2811UpdateStrip(ledStripFormatRGB_e ledFormat)
     }
     needsFullRefresh = false;
 
-#ifdef USE_LEDSTRIP_CACHE_MGMT
-    SCB_CleanDCache_by_Addr(ledStripDMABuffer, WS2811_DMA_BUF_CACHE_ALIGN_BYTES);
-#endif
-
     ws2811LedDataTransferInProgress = true;
     ws2811LedStripDMAEnable();
 }
+#else
+static uint8_t last_active_led = 0;
+static uint8_t led_data[WS2811_LED_STRIP_LENGTH * 3];
+
+
+void ws2811LedStripEnable(void)
+{
+}
+
+bool isWS2811LedStripReady(void)
+{
+    return true;
+}
+
+void ws2811UpdateStrip(ledStripFormatRGB_e ledFormat)
+{
+    static rgbColor24bpp_t *rgb24;
+    uint8_t pos = 0;
+
+    for (int i=0; i<WS2811_LED_STRIP_LENGTH; i++) {
+        rgb24 = hsvToRgb24(&ledColorBuffer[i]);
+        switch(ledFormat) {
+            case LED_RGB:
+                led_data[pos++] = rgb24->rgb.r;
+                led_data[pos++] = rgb24->rgb.g;
+                led_data[pos++] = rgb24->rgb.b;
+                break;
+            case LED_GRB:
+            default:
+                led_data[pos++] = rgb24->rgb.g;
+                led_data[pos++] = rgb24->rgb.r;
+                led_data[pos++] = rgb24->rgb.b;
+                break;
+        }
+        if ((rgb24->rgb.g != 0) || (rgb24->rgb.r != 0) || (rgb24->rgb.b != 0)) {
+            if (i > last_active_led) {
+                last_active_led = i;
+            }
+        }
+    }
+
+    BRAINFPVFPGA_SetLEDs(led_data, last_active_led + 1);
+}
+#endif /* USE_BRAINFPV_FPGA */
 
 #endif

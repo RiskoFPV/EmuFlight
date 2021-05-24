@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -25,9 +25,22 @@
 #include "drivers/dshot.h"
 #include "drivers/motor.h"
 
-#define MOTOR_DSHOT4800_HZ    MHZ_TO_HZ(96)
-#define MOTOR_DSHOT2400_HZ    MHZ_TO_HZ(48)
-#define MOTOR_DSHOT1200_HZ    MHZ_TO_HZ(24)
+
+#if defined(STM32F446xx)
+#define MOTOR_DSHOT600_HZ     MHZ_TO_HZ(45)
+#define MOTOR_DSHOT300_HZ     MHZ_TO_HZ(22.5)
+#define MOTOR_DSHOT150_HZ     MHZ_TO_HZ(11.25)
+
+#define MOTOR_BIT_0           25
+#define MOTOR_BIT_1           51
+#define MOTOR_BITLENGTH       75
+#define GCR_BITLEN            60
+
+#define MOTOR_PROSHOT1000_HZ         MHZ_TO_HZ(90)
+#define PROSHOT_BASE_SYMBOL          90 // 1uS
+#define PROSHOT_BIT_WIDTH            11
+#define MOTOR_NIBBLE_LENGTH_PROSHOT  360 // 4uS
+#else
 #define MOTOR_DSHOT600_HZ     MHZ_TO_HZ(12)
 #define MOTOR_DSHOT300_HZ     MHZ_TO_HZ(6)
 #define MOTOR_DSHOT150_HZ     MHZ_TO_HZ(3)
@@ -35,17 +48,18 @@
 #define MOTOR_BIT_0           7
 #define MOTOR_BIT_1           14
 #define MOTOR_BITLENGTH       20
+#define GCR_BITLEN            16
 
 #define MOTOR_PROSHOT1000_HZ         MHZ_TO_HZ(24)
 #define PROSHOT_BASE_SYMBOL          24 // 1uS
 #define PROSHOT_BIT_WIDTH            3
 #define MOTOR_NIBBLE_LENGTH_PROSHOT  (PROSHOT_BASE_SYMBOL * 4) // 4uS
+#endif /* defined(STM32F446xx) */
 
 #define DSHOT_TELEMETRY_DEADTIME_US   (30 + 5) // 30 to switch lines and 5 to switch lines back
 
-
 typedef uint8_t loadDmaBufferFn(uint32_t *dmaBuffer, int stride, uint16_t packet);  // function pointer used to encode a digital motor value into the DMA buffer representation
-extern FAST_DATA_ZERO_INIT loadDmaBufferFn *loadDmaBuffer;
+extern FAST_RAM_ZERO_INIT loadDmaBufferFn *loadDmaBuffer;
 uint8_t loadDmaBufferDshot(uint32_t *dmaBuffer, int stride, uint16_t packet);
 uint8_t loadDmaBufferProshot(uint32_t *dmaBuffer, int stride, uint16_t packet);
 
@@ -69,7 +83,7 @@ motorDevice_t *dshotPwmDevInit(const struct motorDevConfig_s *motorConfig, uint1
 #elif defined(STM32G4)
 #define DSHOT_DMA_BUFFER_ATTRIBUTE DMA_RAM_W
 #elif defined(STM32F7)
-#define DSHOT_DMA_BUFFER_ATTRIBUTE FAST_DATA_ZERO_INIT
+#define DSHOT_DMA_BUFFER_ATTRIBUTE FAST_RAM_ZERO_INIT
 #else
 #define DSHOT_DMA_BUFFER_ATTRIBUTE // None
 #endif
@@ -160,7 +174,7 @@ typedef struct motorDmaOutput_s {
 motorDmaOutput_t *getMotorDmaOutput(uint8_t index);
 
 void pwmWriteDshotInt(uint8_t index, uint16_t value);
-bool pwmDshotMotorHardwareConfig(const timerHardware_t *timerHardware, uint8_t motorIndex, uint8_t reorderedMotorIndex, motorPwmProtocolTypes_e pwmProtocolType, uint8_t output);
+bool pwmDshotMotorHardwareConfig(const timerHardware_t *timerHardware, uint8_t motorIndex, motorPwmProtocolTypes_e pwmProtocolType, uint8_t output);
 #ifdef USE_DSHOT_TELEMETRY
 bool pwmStartDshotMotorUpdate(void);
 #endif

@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -90,7 +90,7 @@ void targetConfiguration(void)
     mixerConfigMutable()->yaw_motors_reversed = true;
     imuConfigMutable()->small_angle = 180;
 
-    blackboxConfigMutable()->sample_rate = 1; // sample_rate is half of PID loop frequency
+    blackboxConfigMutable()->p_ratio = 128;
 
     /* Breadboard-specific settings for development purposes only
      */
@@ -161,6 +161,7 @@ void targetConfiguration(void)
         controlRateConfig->rates[FD_YAW] = 0;
 
         /* Throttle PID Attenuation (TPA) */
+        controlRateConfig->dynThrPID = 0; // tpa_rate off
         controlRateConfig->tpa_breakpoint = 1600;
 
 	/* Force the clipping mixer at 100% seems better for brushed than default (off) and scaling)? */

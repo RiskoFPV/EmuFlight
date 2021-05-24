@@ -185,8 +185,6 @@
 /* Includes ------------------------------------------------------------------*/
 #include "stm32h7xx_hal.h"
 
-#if defined(FDCAN1)
-
 /** @addtogroup STM32H7xx_HAL_Driver
   * @{
   */
@@ -204,7 +202,6 @@
   * @{
   */
 #define FDCAN_TIMEOUT_VALUE 10U
-#define FDCAN_TIMEOUT_COUNT 50U
 
 #define FDCAN_TX_EVENT_FIFO_MASK (FDCAN_IR_TEFL | FDCAN_IR_TEFF | FDCAN_IR_TEFW | FDCAN_IR_TEFN)
 #define FDCAN_RX_FIFO0_MASK (FDCAN_IR_RF0L | FDCAN_IR_RF0F | FDCAN_IR_RF0W | FDCAN_IR_RF0N)
@@ -2621,7 +2618,7 @@ HAL_StatusTypeDef HAL_FDCAN_Stop(FDCAN_HandleTypeDef *hfdcan)
     while ((hfdcan->Instance->CCCR & FDCAN_CCCR_INIT) == 0U)
     {
       /* Check for the Timeout */
-      if (Counter > FDCAN_TIMEOUT_COUNT)
+      if (Counter > FDCAN_TIMEOUT_VALUE)
       {
         /* Update error code */
         hfdcan->ErrorCode |= HAL_FDCAN_ERROR_TIMEOUT;
@@ -2646,7 +2643,7 @@ HAL_StatusTypeDef HAL_FDCAN_Stop(FDCAN_HandleTypeDef *hfdcan)
     while ((hfdcan->Instance->CCCR & FDCAN_CCCR_CSA) == FDCAN_CCCR_CSA)
     {
       /* Check for the Timeout */
-      if (Counter > FDCAN_TIMEOUT_COUNT)
+      if (Counter > FDCAN_TIMEOUT_VALUE)
       {
         /* Update error code */
         hfdcan->ErrorCode |= HAL_FDCAN_ERROR_TIMEOUT;
@@ -2937,20 +2934,8 @@ HAL_StatusTypeDef HAL_FDCAN_GetRxMessage(FDCAN_HandleTypeDef *hfdcan, uint32_t R
       }
       else
       {
-        /* Check that the Rx FIFO 0 is full & overwrite mode is on*/
-        if(((hfdcan->Instance->RXF0S & FDCAN_RXF0S_F0F) >> FDCAN_RXF0S_F0F_Pos) == 1U)
-        {
-          if(((hfdcan->Instance->RXF0C & FDCAN_RXF0C_F0OM) >> FDCAN_RXF0C_F0OM_Pos) == FDCAN_RX_FIFO_OVERWRITE)
-          {
-            /* When overwrite status is on discard first message in FIFO */
-            GetIndex = 1U;
-          }
-        }
-
-        /* Calculate Rx FIFO 0 element index*/
-        GetIndex += ((hfdcan->Instance->RXF0S & FDCAN_RXF0S_F0GI) >> FDCAN_RXF0S_F0GI_Pos);
-
         /* Calculate Rx FIFO 0 element address */
+        GetIndex = ((hfdcan->Instance->RXF0S & FDCAN_RXF0S_F0GI) >> FDCAN_RXF0S_F0GI_Pos);
         RxAddress = (uint32_t *)(hfdcan->msgRam.RxFIFO0SA + (GetIndex * hfdcan->Init.RxFifo0ElmtSize * 4U));
       }
     }
@@ -2975,20 +2960,8 @@ HAL_StatusTypeDef HAL_FDCAN_GetRxMessage(FDCAN_HandleTypeDef *hfdcan, uint32_t R
       }
       else
       {
-        /* Check that the Rx FIFO 1 is full & overwrite mode is on*/
-        if(((hfdcan->Instance->RXF1S & FDCAN_RXF1S_F1F) >> FDCAN_RXF1S_F1F_Pos) == 1U)
-        {
-          if(((hfdcan->Instance->RXF1C & FDCAN_RXF1C_F1OM) >> FDCAN_RXF1C_F1OM_Pos) == FDCAN_RX_FIFO_OVERWRITE)
-          {
-            /* When overwrite status is on discard first message in FIFO */
-            GetIndex = 1U;
-          }
-        }
-
-        /* Calculate Rx FIFO 1 element index*/
-        GetIndex += ((hfdcan->Instance->RXF1S & FDCAN_RXF1S_F1GI) >> FDCAN_RXF1S_F1GI_Pos);
-
         /* Calculate Rx FIFO 1 element address */
+        GetIndex = ((hfdcan->Instance->RXF1S & FDCAN_RXF1S_F1GI) >> FDCAN_RXF1S_F1GI_Pos);
         RxAddress = (uint32_t *)(hfdcan->msgRam.RxFIFO1SA + (GetIndex * hfdcan->Init.RxFifo1ElmtSize * 4U));
       }
     }
@@ -3147,7 +3120,7 @@ HAL_StatusTypeDef HAL_FDCAN_GetTxEvent(FDCAN_HandleTypeDef *hfdcan, FDCAN_TxEven
       pTxEvent->Identifier = (*TxEventAddress & FDCAN_ELEMENT_MASK_EXTID);
     }
 
-    /* Retrieve TxFrameType */
+    /* Retrieve RxFrameType */
     pTxEvent->TxFrameType = (*TxEventAddress & FDCAN_ELEMENT_MASK_RTR);
 
     /* Retrieve ErrorStateIndicator */
@@ -3156,7 +3129,7 @@ HAL_StatusTypeDef HAL_FDCAN_GetTxEvent(FDCAN_HandleTypeDef *hfdcan, FDCAN_TxEven
     /* Increment TxEventAddress pointer to second word of Tx Event FIFO element */
     TxEventAddress++;
 
-    /* Retrieve TxTimestamp */
+    /* Retrieve RxTimestamp */
     pTxEvent->TxTimestamp = (*TxEventAddress & FDCAN_ELEMENT_MASK_TS);
 
     /* Retrieve DataLength */
@@ -3828,7 +3801,7 @@ HAL_StatusTypeDef HAL_FDCAN_TT_SetGlobalTime(FDCAN_HandleTypeDef *hfdcan, uint32
     while ((hfdcan->ttcan->TTOCN & FDCAN_TTOCN_LCKC) != 0U)
     {
       /* Check for the Timeout */
-      if (Counter > FDCAN_TIMEOUT_COUNT)
+      if (Counter > FDCAN_TIMEOUT_VALUE)
       {
         /* Update error code */
         hfdcan->ErrorCode |= HAL_FDCAN_ERROR_TIMEOUT;
@@ -3902,7 +3875,7 @@ HAL_StatusTypeDef HAL_FDCAN_TT_SetClockSynchronization(FDCAN_HandleTypeDef *hfdc
     while ((hfdcan->ttcan->TTOCN & FDCAN_TTOCN_LCKC) != 0U)
     {
       /* Check for the Timeout */
-      if (Counter > FDCAN_TIMEOUT_COUNT)
+      if (Counter > FDCAN_TIMEOUT_VALUE)
       {
         /* Update error code */
         hfdcan->ErrorCode |= HAL_FDCAN_ERROR_TIMEOUT;
@@ -3958,7 +3931,7 @@ HAL_StatusTypeDef HAL_FDCAN_TT_ConfigStopWatch(FDCAN_HandleTypeDef *hfdcan, uint
     while ((hfdcan->ttcan->TTOCN & FDCAN_TTOCN_LCKC) != 0U)
     {
       /* Check for the Timeout */
-      if (Counter > FDCAN_TIMEOUT_COUNT)
+      if (Counter > FDCAN_TIMEOUT_VALUE)
       {
         /* Update error code */
         hfdcan->ErrorCode |= HAL_FDCAN_ERROR_TIMEOUT;
@@ -4027,7 +4000,7 @@ HAL_StatusTypeDef HAL_FDCAN_TT_ConfigRegisterTimeMark(FDCAN_HandleTypeDef *hfdca
     while ((hfdcan->ttcan->TTOCN & FDCAN_TTOCN_LCKC) != 0U)
     {
       /* Check for the Timeout */
-      if (Counter > FDCAN_TIMEOUT_COUNT)
+      if (Counter > FDCAN_TIMEOUT_VALUE)
       {
         /* Update error code */
         hfdcan->ErrorCode |= HAL_FDCAN_ERROR_TIMEOUT;
@@ -4063,7 +4036,7 @@ HAL_StatusTypeDef HAL_FDCAN_TT_ConfigRegisterTimeMark(FDCAN_HandleTypeDef *hfdca
       while ((hfdcan->ttcan->TTTMK & FDCAN_TTTMK_LCKM) != 0U)
       {
         /* Check for the Timeout */
-        if (Counter > FDCAN_TIMEOUT_COUNT)
+        if (Counter > FDCAN_TIMEOUT_VALUE)
         {
           /* Update error code */
           hfdcan->ErrorCode |= HAL_FDCAN_ERROR_TIMEOUT;
@@ -4087,7 +4060,7 @@ HAL_StatusTypeDef HAL_FDCAN_TT_ConfigRegisterTimeMark(FDCAN_HandleTypeDef *hfdca
       while ((hfdcan->ttcan->TTOCN & FDCAN_TTOCN_LCKC) != 0U)
       {
         /* Check for the Timeout */
-        if (Counter > FDCAN_TIMEOUT_COUNT)
+        if (Counter > FDCAN_TIMEOUT_VALUE)
         {
           /* Update error code */
           hfdcan->ErrorCode |= HAL_FDCAN_ERROR_TIMEOUT;
@@ -4138,7 +4111,7 @@ HAL_StatusTypeDef HAL_FDCAN_TT_EnableRegisterTimeMarkPulse(FDCAN_HandleTypeDef *
     while ((hfdcan->ttcan->TTOCN & FDCAN_TTOCN_LCKC) != 0U)
     {
       /* Check for the Timeout */
-      if (Counter > FDCAN_TIMEOUT_COUNT)
+      if (Counter > FDCAN_TIMEOUT_VALUE)
       {
         /* Update error code */
         hfdcan->ErrorCode |= HAL_FDCAN_ERROR_TIMEOUT;
@@ -4188,7 +4161,7 @@ HAL_StatusTypeDef HAL_FDCAN_TT_DisableRegisterTimeMarkPulse(FDCAN_HandleTypeDef 
     while ((hfdcan->ttcan->TTOCN & FDCAN_TTOCN_LCKC) != 0U)
     {
       /* Check for the Timeout */
-      if (Counter > FDCAN_TIMEOUT_COUNT)
+      if (Counter > FDCAN_TIMEOUT_VALUE)
       {
         /* Update error code */
         hfdcan->ErrorCode |= HAL_FDCAN_ERROR_TIMEOUT;
@@ -4240,7 +4213,7 @@ HAL_StatusTypeDef HAL_FDCAN_TT_EnableTriggerTimeMarkPulse(FDCAN_HandleTypeDef *h
       while ((hfdcan->ttcan->TTOCN & FDCAN_TTOCN_LCKC) != 0U)
       {
         /* Check for the Timeout */
-        if (Counter > FDCAN_TIMEOUT_COUNT)
+        if (Counter > FDCAN_TIMEOUT_VALUE)
         {
           /* Update error code */
           hfdcan->ErrorCode |= HAL_FDCAN_ERROR_TIMEOUT;
@@ -4301,7 +4274,7 @@ HAL_StatusTypeDef HAL_FDCAN_TT_DisableTriggerTimeMarkPulse(FDCAN_HandleTypeDef *
       while ((hfdcan->ttcan->TTOCN & FDCAN_TTOCN_LCKC) != 0U)
       {
         /* Check for the Timeout */
-        if (Counter > FDCAN_TIMEOUT_COUNT)
+        if (Counter > FDCAN_TIMEOUT_VALUE)
         {
           /* Update error code */
           hfdcan->ErrorCode |= HAL_FDCAN_ERROR_TIMEOUT;
@@ -4362,7 +4335,7 @@ HAL_StatusTypeDef HAL_FDCAN_TT_EnableHardwareGapControl(FDCAN_HandleTypeDef *hfd
       while ((hfdcan->ttcan->TTOCN & FDCAN_TTOCN_LCKC) != 0U)
       {
         /* Check for the Timeout */
-        if (Counter > FDCAN_TIMEOUT_COUNT)
+        if (Counter > FDCAN_TIMEOUT_VALUE)
         {
           /* Update error code */
           hfdcan->ErrorCode |= HAL_FDCAN_ERROR_TIMEOUT;
@@ -4423,7 +4396,7 @@ HAL_StatusTypeDef HAL_FDCAN_TT_DisableHardwareGapControl(FDCAN_HandleTypeDef *hf
       while ((hfdcan->ttcan->TTOCN & FDCAN_TTOCN_LCKC) != 0U)
       {
         /* Check for the Timeout */
-        if (Counter > FDCAN_TIMEOUT_COUNT)
+        if (Counter > FDCAN_TIMEOUT_VALUE)
         {
           /* Update error code */
           hfdcan->ErrorCode |= HAL_FDCAN_ERROR_TIMEOUT;
@@ -4486,7 +4459,7 @@ HAL_StatusTypeDef HAL_FDCAN_TT_EnableTimeMarkGapControl(FDCAN_HandleTypeDef *hfd
       while ((hfdcan->ttcan->TTOCN & FDCAN_TTOCN_LCKC) != 0U)
       {
         /* Check for the Timeout */
-        if (Counter > FDCAN_TIMEOUT_COUNT)
+        if (Counter > FDCAN_TIMEOUT_VALUE)
         {
           /* Update error code */
           hfdcan->ErrorCode |= HAL_FDCAN_ERROR_TIMEOUT;
@@ -4547,7 +4520,7 @@ HAL_StatusTypeDef HAL_FDCAN_TT_DisableTimeMarkGapControl(FDCAN_HandleTypeDef *hf
       while ((hfdcan->ttcan->TTOCN & FDCAN_TTOCN_LCKC) != 0U)
       {
         /* Check for the Timeout */
-        if (Counter > FDCAN_TIMEOUT_COUNT)
+        if (Counter > FDCAN_TIMEOUT_VALUE)
         {
           /* Update error code */
           hfdcan->ErrorCode |= HAL_FDCAN_ERROR_TIMEOUT;
@@ -4617,7 +4590,7 @@ HAL_StatusTypeDef HAL_FDCAN_TT_SetNextIsGap(FDCAN_HandleTypeDef *hfdcan)
       while ((hfdcan->ttcan->TTOCN & FDCAN_TTOCN_LCKC) != 0U)
       {
         /* Check for the Timeout */
-        if (Counter > FDCAN_TIMEOUT_COUNT)
+        if (Counter > FDCAN_TIMEOUT_VALUE)
         {
           /* Update error code */
           hfdcan->ErrorCode |= HAL_FDCAN_ERROR_TIMEOUT;
@@ -4687,7 +4660,7 @@ HAL_StatusTypeDef HAL_FDCAN_TT_SetEndOfGap(FDCAN_HandleTypeDef *hfdcan)
       while ((hfdcan->ttcan->TTOCN & FDCAN_TTOCN_LCKC) != 0U)
       {
         /* Check for the Timeout */
-        if (Counter > FDCAN_TIMEOUT_COUNT)
+        if (Counter > FDCAN_TIMEOUT_VALUE)
         {
           /* Update error code */
           hfdcan->ErrorCode |= HAL_FDCAN_ERROR_TIMEOUT;
@@ -4791,7 +4764,7 @@ HAL_StatusTypeDef HAL_FDCAN_TT_EnableExternalSynchronization(FDCAN_HandleTypeDef
     while ((hfdcan->ttcan->TTOCN & FDCAN_TTOCN_LCKC) != 0U)
     {
       /* Check for the Timeout */
-      if (Counter > FDCAN_TIMEOUT_COUNT)
+      if (Counter > FDCAN_TIMEOUT_VALUE)
       {
         /* Update error code */
         hfdcan->ErrorCode |= HAL_FDCAN_ERROR_TIMEOUT;
@@ -4841,7 +4814,7 @@ HAL_StatusTypeDef HAL_FDCAN_TT_DisableExternalSynchronization(FDCAN_HandleTypeDe
     while ((hfdcan->ttcan->TTOCN & FDCAN_TTOCN_LCKC) != 0U)
     {
       /* Check for the Timeout */
-      if (Counter > FDCAN_TIMEOUT_COUNT)
+      if (Counter > FDCAN_TIMEOUT_VALUE)
       {
         /* Update error code */
         hfdcan->ErrorCode |= HAL_FDCAN_ERROR_TIMEOUT;
@@ -6192,7 +6165,5 @@ static void FDCAN_CopyMessageToRAM(FDCAN_HandleTypeDef *hfdcan, FDCAN_TxHeaderTy
 /**
   * @}
   */
-
-#endif /* FDCAN1 */
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

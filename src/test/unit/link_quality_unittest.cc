@@ -64,10 +64,8 @@ extern "C" {
     #include "sensors/battery.h"
 
     attitudeEulerAngles_t attitude;
-    float rMat[3][3];
-
     pidProfile_t *currentPidProfile;
-    float rcData[MAX_SUPPORTED_RC_CHANNEL_COUNT];
+    int16_t rcData[MAX_SUPPORTED_RC_CHANNEL_COUNT];
     uint8_t GPS_numSat;
     uint16_t GPS_distanceToHome;
     int16_t GPS_directionToHome;
@@ -75,6 +73,8 @@ extern "C" {
     int32_t GPS_coord[2];
     gpsSolutionData_t gpsSol;
     float motor[8];
+    float motorOutputHigh = 2047;
+    float motorOutputLow = 1000;
     acc_t acc;
     float accAverage[XYZ_AXIS_COUNT];
 
@@ -350,7 +350,7 @@ TEST(LQTest, TestLQAlarm)
 
     // and
     // using the metric unit system
-    osdConfigMutable()->units = UNIT_METRIC;
+    osdConfigMutable()->units = OSD_UNIT_METRIC;
 
     // when
     // the craft is armed
@@ -456,8 +456,6 @@ extern "C" {
     void resetPPMDataReceivedState(void){ }
     void failsafeOnValidDataReceived(void) { }
     void failsafeOnValidDataFailed(void) { }
-    void pinioBoxTaskControl(void) { }
-    bool taskUpdateRxMainInProgress() { return true; }
 
     void rxPwmInit(rxRuntimeState_t *rxRuntimeState, rcReadRawDataFnPtr *callback)
     {
@@ -552,8 +550,4 @@ extern "C" {
     }
 
     bool isUpright(void) { return true; }
-
-    float getMotorOutputLow(void) { return 1000.0; }
-
-    float getMotorOutputHigh(void) { return 2047.0; }
 }

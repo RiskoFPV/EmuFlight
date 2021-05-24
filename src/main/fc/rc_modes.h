@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -37,8 +37,7 @@ typedef enum {
     BOXPASSTHRU,
     BOXFAILSAFE,
     BOXGPSRESCUE,
-    BOXNFE,
-    BOXID_FLIGHTMODE_LAST = BOXNFE,
+    BOXID_FLIGHTMODE_LAST = BOXGPSRESCUE,
 
 // When new flight modes are added, the parameter group version for 'modeActivationConditions' in src/main/fc/rc_modes.c has to be incremented to ensure that the RC modes configuration is reset.
 
@@ -72,11 +71,9 @@ typedef enum {
     BOXUSER3,
     BOXUSER4,
     BOXPIDAUDIO,
+    BOXACROTRAINER,
     BOXVTXCONTROLDISABLE,
     BOXLAUNCHCONTROL,
-    BOXMSPOVERRIDE,
-    BOXSTICKCOMMANDDISABLE,
-    BOXBEEPERMUTE,
     CHECKBOX_ITEM_COUNT
 } boxId_e;
 

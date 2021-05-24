@@ -177,7 +177,6 @@ PG_RESET_TEMPLATE(gpsRescueConfig_t, gpsRescueConfig,
     .altitudeMode = MAX_ALT,
     .ascendRate = 500,
     .descendRate = 150,
-    .rescueAltitudeBufferM = 15,
 );
 
 static uint16_t rescueThrottle;
@@ -409,6 +408,11 @@ static void performSanityChecks()
         }
     }
 
+    // Check if crash recovery mode is active, disarm if so.
+    if (crashRecoveryModeActive()) {
+        rescueState.failure = RESCUE_CRASH_FLIP_DETECTED;
+    }
+
     // Check if GPS comms are healthy
     if (!rescueState.sensor.healthy) {
         rescueState.failure = RESCUE_GPSLOST;
@@ -476,7 +480,7 @@ static void sensorUpdate()
         rescueState.sensor.zVelocity = (rescueState.sensor.currentAltitudeCm - previousAltitudeCm) * 1000000.0f / dTime;
         rescueState.sensor.zVelocityAvg = 0.8f * rescueState.sensor.zVelocityAvg + rescueState.sensor.zVelocity * 0.2f;
 
-        rescueState.sensor.accMagnitude = (float) fast_fsqrtf(sq(acc.accADC[Z]) + sq(acc.accADC[X]) + sq(acc.accADC[Y])) * acc.dev.acc_1G_rec;
+        rescueState.sensor.accMagnitude = (float) sqrtf(sq(acc.accADC[Z]) + sq(acc.accADC[X]) + sq(acc.accADC[Y])) * acc.dev.acc_1G_rec;
         rescueState.sensor.accMagnitudeAvg = (rescueState.sensor.accMagnitudeAvg * 0.8f) + (rescueState.sensor.accMagnitude * 0.2f);
 
         previousAltitudeCm = rescueState.sensor.currentAltitudeCm;
@@ -602,11 +606,11 @@ void updateGPSRescueState(void)
                 newAltitude = gpsRescueConfig()->initialAltitudeM * 100;
                 break;
             case CURRENT_ALT:
-                newAltitude = rescueState.sensor.currentAltitudeCm + gpsRescueConfig()->rescueAltitudeBufferM * 100;
+                newAltitude = rescueState.sensor.currentAltitudeCm;
                 break;
             case MAX_ALT:
             default:
-                newAltitude = MAX(gpsRescueConfig()->initialAltitudeM * 100, rescueState.sensor.maxAltitudeCm + gpsRescueConfig()->rescueAltitudeBufferM * 100);
+                newAltitude = MAX(gpsRescueConfig()->initialAltitudeM * 100, rescueState.sensor.maxAltitudeCm + 1500);
                 break;
         }
 
@@ -648,6 +652,7 @@ void updateGPSRescueState(void)
         }
 
         // Only allow new altitude and new speed to be equal or lower than the current values (to prevent parabolic movement on overshoot)
+
         const int32_t newAlt = MAX((lineSlope * rescueState.sensor.distanceToHomeM + lineOffsetM) * 100, 0);
 
         // Start to decrease proportionally the quad's speed when the distance to home is less or equal than GPS_RESCUE_SLOWDOWN_DISTANCE_M
@@ -742,3 +747,4 @@ bool gpsRescueDisableMag(void)
 }
 #endif
 #endif
+

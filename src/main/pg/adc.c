@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -39,6 +39,8 @@ PG_REGISTER_WITH_RESET_FN(adcConfig_t, adcConfig, PG_ADC_CONFIG, 0);
 
 void pgResetFn_adcConfig(adcConfig_t *adcConfig)
 {
+    STATIC_ASSERT(MAX_ADC_SUPPORTED <= ADC_DEV_TO_CFG(ADCDEV_COUNT) || MAX_ADC_SUPPORTED != 4, adc_count_mismatch);
+
     adcConfig->device = ADC_DEV_TO_CFG(adcDeviceByInstance(ADC_INSTANCE));
     adcConfig->dmaopt[ADCDEV_1] = ADC1_DMA_OPT;
 // These conditionals need to match the ones used in 'src/main/drivers/adc.h'.

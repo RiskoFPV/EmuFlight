@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -31,7 +31,7 @@ uint8_t debugMode;
 uint32_t sectionTimes[2][4];
 #endif
 
-// Please ensure that these names are aligned with the enum values defined in 'debug.h' - for OSD be sure the name is unique with 12 chars.
+// Please ensure that these names are aligned with the enum values defined in 'debug.h'
 const char * const debugModeNames[DEBUG_COUNT] = {
     "NONE",
     "CYCLETIME",
@@ -71,6 +71,7 @@ const char * const debugModeNames[DEBUG_COUNT] = {
     "SMARTAUDIO",
     "RTH",
     "ITERM_RELAX",
+    "ACRO_TRAINER",
     "RC_SMOOTHING",
     "RX_SIGNAL_LOSS",
     "RC_SMOOTHING_RATE",
@@ -79,6 +80,9 @@ const char * const debugModeNames[DEBUG_COUNT] = {
     "RX_SPEKTRUM_SPI",
     "DSHOT_RPM_TELEMETRY",
     "RPM_FILTER",
+    "D_MIN",
+    "AC_CORRECTION",
+    "AC_ERROR",
     "DUAL_GYRO_SCALED",
     "DSHOT_RPM_ERRORS",
     "CRSF_LINK_STATISTICS_UPLINK",
@@ -90,17 +94,6 @@ const char * const debugModeNames[DEBUG_COUNT] = {
     "FF_LIMIT",
     "FF_INTERPOLATED",
     "BLACKBOX_OUTPUT",
+    "GYRO_SAMPLE",
     "RX_TIMING",
-    "MATRIX_FILTER",
-    "D_LPF",
-    "VTX_TRAMP",
-    "KALMAN",
-    "ABG",
-    "D_ABG",
-    "BOOST",
-    "GHST",
-    "ABG_STATE",
-    "D_ABG_STATE",
-    "RC_PREDICTOR",
-    "SMITH_PREDICT",
 };

@@ -95,10 +95,8 @@ COMMON_SRC = \
             flight/imu.c \
             flight/interpolated_setpoint.c \
             flight/mixer.c \
-            flight/mixer_init.c \
             flight/mixer_tricopter.c \
             flight/pid.c \
-            flight/pid_init.c \
             flight/rpm_filter.c \
             flight/servos.c \
             flight/servos_tricopter.c \
@@ -115,7 +113,6 @@ COMMON_SRC = \
             rx/rx_spi.c \
             rx/rx_spi_common.c \
             rx/crsf.c \
-            rx/ghst.c \
             rx/sbus.c \
             rx/sbus_channels.c \
             rx/spektrum.c \
@@ -126,9 +123,7 @@ COMMON_SRC = \
             rx/sumh.c \
             rx/xbus.c \
             rx/fport.c \
-            rx/msp_override.c \
             sensors/acceleration.c \
-            sensors/acceleration_init.c \
             sensors/boardalignment.c \
             sensors/compass.c \
             sensors/gyro.c \
@@ -153,7 +148,6 @@ COMMON_SRC = \
             cms/cms_menu_vtx_rtc6705.c \
             cms/cms_menu_vtx_smartaudio.c \
             cms/cms_menu_vtx_tramp.c \
-            cms/cms_menu_persistent_stats.c \
             drivers/display_ug2864hsweg01.c \
             drivers/light_ws2811strip.c \
             drivers/rangefinder/rangefinder_hcsr04.c \
@@ -181,7 +175,6 @@ COMMON_SRC = \
             sensors/rangefinder.c \
             telemetry/telemetry.c \
             telemetry/crsf.c \
-            telemetry/ghst.c \
             telemetry/srxl.c \
             telemetry/frsky_hub.c \
             telemetry/hott.c \
@@ -230,7 +223,6 @@ SPEED_OPTIMISED_SRC := $(SPEED_OPTIMISED_SRC) \
             drivers/accgyro/accgyro_mpu3050.c \
             drivers/accgyro/accgyro_spi_bmi160.c \
             drivers/accgyro/accgyro_spi_bmi270.c \
-            drivers/accgyro/accgyro_spi_lsm6dso.c \
             drivers/accgyro_legacy/accgyro_adxl345.c \
             drivers/accgyro_legacy/accgyro_bma280.c \
             drivers/accgyro_legacy/accgyro_l3g4200d.c \
@@ -278,10 +270,8 @@ SPEED_OPTIMISED_SRC := $(SPEED_OPTIMISED_SRC) \
             sensors/gyro.c \
             $(CMSIS_SRC) \
             $(DEVICE_STDPERIPH_SRC) \
-						common/kalman.c \
 
 SIZE_OPTIMISED_SRC := $(SIZE_OPTIMISED_SRC) \
-            $(shell find $(SRC_DIR) -name '*_init.c') \
             bus_bst_stm32f30x.c \
             cli/cli.c \
             cli/settings.c \
@@ -309,6 +299,7 @@ SIZE_OPTIMISED_SRC := $(SIZE_OPTIMISED_SRC) \
             drivers/serial_escserial.c \
             drivers/serial_pinconfig.c \
             drivers/serial_tcp.c \
+            drivers/serial_uart_init.c \
             drivers/serial_uart_pinconfig.c \
             drivers/serial_usb_vcp.c \
             drivers/transponder_ir_io_hal.c \
@@ -346,7 +337,6 @@ SIZE_OPTIMISED_SRC := $(SIZE_OPTIMISED_SRC) \
             cms/cms_menu_vtx_rtc6705.c \
             cms/cms_menu_vtx_smartaudio.c \
             cms/cms_menu_vtx_tramp.c \
-            cms/cms_menu_persistent_stats.c \
             io/vtx.c \
             io/vtx_rtc6705.c \
             io/vtx_smartaudio.c \
@@ -355,7 +345,8 @@ SIZE_OPTIMISED_SRC := $(SIZE_OPTIMISED_SRC) \
             io/spektrum_vtx_control.c \
             osd/osd.c \
             osd/osd_elements.c \
-            rx/rx_bind.c
+            rx/rx_bind.c \
+            sensors/gyro_init.c
 
 # Gyro driver files that only contain initialization and configuration code - not runtime code
 SIZE_OPTIMISED_SRC := $(SIZE_OPTIMISED_SRC) \
@@ -364,8 +355,7 @@ SIZE_OPTIMISED_SRC := $(SIZE_OPTIMISED_SRC) \
             drivers/accgyro/accgyro_spi_mpu6000.c \
             drivers/accgyro/accgyro_spi_mpu6500.c \
             drivers/accgyro/accgyro_spi_mpu9250.c \
-            drivers/accgyro/accgyro_spi_icm20689.c \
-            drivers/accgyro/accgyro_spi_lsm6dso_init.c
+            drivers/accgyro/accgyro_spi_icm20689.c
 
 
 # F4 and F7 optimizations
@@ -385,7 +375,7 @@ endif #!F3
 endif #!F1
 
 # check if target.mk supplied
-SRC := $(STARTUP_SRC) $(MCU_COMMON_SRC) $(TARGET_SRC) $(VARIANT_SRC)
+SRC := $(STARTUP_SRC) $(MCU_COMMON_SRC) $(SRC) $(VARIANT_SRC)
 
 # Files that should not be optimized, useful for debugging IMPRECISE cpu faults.
 # Specify FULL PATH, e.g. "./lib/main/STM32F7/Drivers/STM32F7xx_HAL_Driver/Src/stm32f7xx_ll_sdmmc.c"
@@ -406,6 +396,8 @@ SRC += $(DSP_LIB)/Source/ComplexMathFunctions/arm_cmplx_mag_f32.c
 SRC += $(DSP_LIB)/Source/StatisticsFunctions/arm_max_f32.c
 
 SRC += $(wildcard $(DSP_LIB)/Source/*/*.S)
+
+DEVICE_FLAGS += -DFFT_SIZE_32
 endif
 
 ifneq ($(filter ONBOARDFLASH,$(FEATURES)),)
@@ -447,6 +439,76 @@ ifneq ($(filter VCP,$(FEATURES)),)
 SRC += $(VCP_SRC)
 endif
 
+ifneq ($(filter CHIBIOS,$(FEATURES)),)
+CHIBIOS := $(ROOT)/lib/main/ChibiOS
+
+
+ifeq ($(TARGET),$(filter $(TARGET), $(F446_TARGETS)))
+include $(CHIBIOS)/os/hal/ports/STM32/STM32F4xx/platform.mk
+INCLUDE_DIRS += $(CHIBIOS)/os/common/startup/ARMCMx/devices/STM32F4xx
+endif
+
+ifeq ($(TARGET),$(filter $(TARGET),$(H750xB_TARGETS)))
+include $(CHIBIOS)/os/hal/ports/STM32/STM32H7xx/platform.mk
+INCLUDE_DIRS += $(CHIBIOS)/os/common/startup/ARMCMx/devices/STM32H7xx
+endif
+
+include $(CHIBIOS)/os/hal/hal.mk
+include $(CHIBIOS)/os/hal/osal/rt/osal.mk
+include $(CHIBIOS)/os/rt/rt.mk
+include $(CHIBIOS)/os/common/ports/ARMCMx/compilers/GCC/mk/port_v7m.mk
+
+DEVICE_FLAGS += -DUSE_CHIBIOS -DCORTEX_USE_FPU=TRUE -DCORTEX_SIMPLIFIED_PRIORITY=TRUE $(DDEFS)
+
+
+SRC += $(CHIBIOS)/os/common/startup/ARMCMx/compilers/GCC/crt1.c
+SRC += $(STARTUPSRC)
+SRC += $(PLATFORMSRC)
+SRC += $(HALSRC)
+SRC += $(PORTSRC)
+SRC += $(KERNSRC)
+SRC += $(STARTUPASM)
+SRC += $(PORTASM)
+SRC += $(OSALASM)
+
+
+INCLUDE_DIRS += $(CHIBIOS)/os/license/
+INCLUDE_DIRS += $(CHIBIOS)//os/oslib/include/
+INCLUDE_DIRS += $(CHIBIOS)/os/common/ext/ST/STM32F4xx/
+
+INCLUDE_DIRS += $(STARTUPINC)
+INCLUDE_DIRS += $(KERNINC)
+INCLUDE_DIRS += $(PORTINC)
+INCLUDE_DIRS += $(OSALINC)
+INCLUDE_DIRS += $(HALINC)
+INCLUDE_DIRS += $(PLATFORMINC)
+endif
+
+ifneq ($(filter BRAINFPV,$(FEATURES)),)
+SRC += brainfpv/brainfpv_system.c \
+	   brainfpv/spectrograph.c \
+       brainfpv/brainfpv_osd.c \
+       brainfpv/video_quadspi.c \
+       brainfpv/osd_utils.c \
+       brainfpv/fonts.c \
+       brainfpv/images.c \
+       brainfpv/video_quadspi.c \
+       brainfpv/ir_transponder.c \
+       io/displayport_max7456.c \
+       cms/cms_menu_brainfpv.c
+ifeq ($(TARGET),$(filter $(TARGET),$(H750xB_TARGETS)))
+SRC +=  $(ROOT)/lib/main/STM32H7/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_mdma.c \
+        $(ROOT)/lib/main/STM32H7/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_comp.c
+endif
+endif
+SRC += $(TARGET_SRC)
+
+
+ifneq ($(filter SPECTROGRAPH,$(FEATURES)),)
+SRC += brainfpv/spectrograph.c
+DEVICE_FLAGS += -DFFT_SIZE_512
+endif
+
 ifneq ($(filter MSC,$(FEATURES)),)
 SRC += $(MSC_SRC)
 endif
@@ -454,12 +516,3 @@ endif
 
 # Search path and source files for the ST stdperiph library
 VPATH        := $(VPATH):$(STDPERIPH_DIR)/src
-
-# Search path and source files for the Open Location Code library
-OLC_DIR = $(ROOT)/lib/main/google/olc
-
-ifneq ($(OLC_DIR),)
-INCLUDE_DIRS += $(OLC_DIR)
-SRC += $(OLC_DIR)/olc.c
-SIZE_OPTIMISED_SRC += $(OLC_DIR)/olc.c
-endif

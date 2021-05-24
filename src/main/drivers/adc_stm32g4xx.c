@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -205,7 +205,11 @@ void adcInitDevice(adcDevice_t *adcdev, int channelCount)
 
     hadc->Instance = adcdev->ADCx;
 
-    // DeInit is done in adcInit().
+    if (HAL_ADC_DeInit(hadc) != HAL_OK)
+    {
+      // ADC de-initialization Error
+      handleError();
+    }
 
     hadc->Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV4;
     hadc->Init.Resolution = ADC_RESOLUTION_12B;
@@ -224,6 +228,19 @@ void adcInitDevice(adcDevice_t *adcdev, int channelCount)
     hadc->Init.OversamplingMode = DISABLE;
 
     if (HAL_ADC_Init(hadc) != HAL_OK) {
+        handleError();
+    }
+
+    // Configure the ADC multi-mode
+    ADC_MultiModeTypeDef multimode = { 0 };
+    multimode.Mode = ADC_MODE_INDEPENDENT;
+    if (HAL_ADCEx_MultiModeConfigChannel(hadc, &multimode) != HAL_OK) {
+        handleError();
+    }
+
+    ADC_AnalogWDGConfTypeDef AnalogWDGConfig = { 0 };
+    AnalogWDGConfig.Channel = ADC_CHANNEL_1;
+    if (HAL_ADC_AnalogWDGConfig(hadc, &AnalogWDGConfig) != HAL_OK) {
         handleError();
     }
 
@@ -338,24 +355,6 @@ void adcInit(const adcConfig_t *config)
         if (adcOperatingConfig[i].tag) {
             IOInit(IOGetByTag(adcOperatingConfig[i].tag), OWNER_ADC_BATT + i, 0);
             IOConfigGPIO(IOGetByTag(adcOperatingConfig[i].tag), IO_CONFIG(GPIO_MODE_ANALOG, 0, GPIO_NOPULL));
-        }
-    }
-
-    // DeInit ADCx with inputs
-    // We have to batch call DeInit() for all devices as DeInit() initializes ADCx_COMMON register.
-
-    for (int dev = 0; dev < ADCDEV_COUNT; dev++) {
-        adcDevice_t *adc = &adcDevice[dev];
-
-        if (!(adc->ADCx && adc->channelBits)) {
-            continue;
-        }
-
-        adc->ADCHandle.Instance = adc->ADCx;
-
-        if (HAL_ADC_DeInit(&adc->ADCHandle) != HAL_OK) { 
-            // ADC de-initialization Error
-            handleError();
         }
     }
 

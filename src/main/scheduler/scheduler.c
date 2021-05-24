@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -35,6 +35,7 @@
 
 #include "drivers/time.h"
 
+
 #include "fc/core.h"
 #include "fc/tasks.h"
 
@@ -43,30 +44,44 @@
 #define TASK_AVERAGE_EXECUTE_FALLBACK_US 30 // Default task average time if USE_TASK_STATISTICS is not defined
 #define TASK_AVERAGE_EXECUTE_PADDING_US 5   // Add a little padding to the average execution time
 
+#if defined(USE_CHIBIOS)
+#include <math.h>
+#include "ch.h"
+
+uint32_t last_check = 0;
+extern binary_semaphore_t gyroSem;
+extern bool idleCounterClear;
+extern uint32_t idleCounter;
+extern bool gyro_sample_processed;
+
+#if defined(USE_MULT_CPU_IDLE_COUNTS)
+extern uint32_t cpu_idle_counts_no_load;
+#endif /* defined(USE_MULT_CPU_IDLE_COUNTS) */
+#endif
+
 // DEBUG_SCHEDULER, timings for:
 // 0 - gyroUpdate()
 // 1 - pidController()
 // 2 - time spent in scheduler
 // 3 - time spent executing check function
 
-static FAST_DATA_ZERO_INIT task_t *currentTask = NULL;
-static FAST_DATA_ZERO_INIT bool ignoreCurrentTaskTime;
+static FAST_RAM_ZERO_INIT task_t *currentTask = NULL;
 
-static FAST_DATA_ZERO_INIT uint32_t totalWaitingTasks;
-static FAST_DATA_ZERO_INIT uint32_t totalWaitingTasksSamples;
+static FAST_RAM_ZERO_INIT uint32_t totalWaitingTasks;
+static FAST_RAM_ZERO_INIT uint32_t totalWaitingTasksSamples;
 
-static FAST_DATA_ZERO_INIT bool calculateTaskStatistics;
-FAST_DATA_ZERO_INIT uint16_t averageSystemLoadPercent = 0;
+static FAST_RAM_ZERO_INIT bool calculateTaskStatistics;
+FAST_RAM_ZERO_INIT uint16_t averageSystemLoadPercent = 0;
 
-static FAST_DATA_ZERO_INIT int taskQueuePos = 0;
-STATIC_UNIT_TESTED FAST_DATA_ZERO_INIT int taskQueueSize = 0;
+static FAST_RAM_ZERO_INIT int taskQueuePos = 0;
+STATIC_UNIT_TESTED FAST_RAM_ZERO_INIT int taskQueueSize = 0;
 
-static FAST_DATA int periodCalculationBasisOffset = offsetof(task_t, lastExecutedAtUs);
-static FAST_DATA_ZERO_INIT bool gyroEnabled;
+static FAST_RAM int periodCalculationBasisOffset = offsetof(task_t, lastExecutedAtUs);
+static FAST_RAM_ZERO_INIT bool gyroEnabled;
 
 // No need for a linked list for the queue, since items are only inserted at startup
 
-STATIC_UNIT_TESTED FAST_DATA_ZERO_INIT task_t* taskQueueArray[TASK_COUNT + 1]; // extra item for NULL pointer at end of queue
+STATIC_UNIT_TESTED FAST_RAM_ZERO_INIT task_t* taskQueueArray[TASK_COUNT + 1]; // extra item for NULL pointer at end of queue
 
 void queueClear(void)
 {
@@ -132,6 +147,27 @@ FAST_CODE task_t *queueNext(void)
 
 void taskSystemLoad(timeUs_t currentTimeUs)
 {
+#if defined(USE_CHIBIOS)
+    UNUSED(currentTimeUs);
+    uint32_t now = millis();
+    if ((idleCounterClear == 0) && (now - last_check > 1e3)) {
+        float dT = (now - last_check) / 1e3;
+#if defined(USE_MULT_CPU_IDLE_COUNTS)
+        float idle = ((float)idleCounter / dT) / (float)cpu_idle_counts_no_load;
+#else
+        float idle = ((float)idleCounter / dT) / (float)IDLE_COUNTS_PER_SEC_AT_NO_LOAD;
+#endif
+        if (idle > 1)
+            averageSystemLoadPercent = 0;
+        else
+            averageSystemLoadPercent = 100 - roundf(100.0f * idle);
+        totalWaitingTasksSamples = 0;
+        totalWaitingTasks = 0;
+        last_check = now;
+        idleCounterClear = 1;
+    }
+#else
+    /* Calculate system load */
     UNUSED(currentTimeUs);
 
     // Calculate system load
@@ -140,8 +176,10 @@ void taskSystemLoad(timeUs_t currentTimeUs)
         totalWaitingTasksSamples = 0;
         totalWaitingTasks = 0;
     }
+
 #if defined(SIMULATOR_BUILD)
     averageSystemLoadPercent = 0;
+#endif
 #endif
 }
 
@@ -174,11 +212,6 @@ void getTaskInfo(taskId_e taskId, taskInfo_t * taskInfo)
     taskInfo->averageDeltaTimeUs = getTask(taskId)->movingSumDeltaTimeUs / TASK_STATS_MOVING_SUM_COUNT;
     taskInfo->latestDeltaTimeUs = getTask(taskId)->taskLatestDeltaTimeUs;
     taskInfo->movingAverageCycleTimeUs = getTask(taskId)->movingAverageCycleTimeUs;
-#if defined(USE_LATE_TASK_STATISTICS)
-    taskInfo->lateCount = getTask(taskId)->lateCount;
-    taskInfo->runCount = getTask(taskId)->runCount;
-    taskInfo->execTime = getTask(taskId)->execTime;
-#endif
 #endif
 }
 
@@ -216,12 +249,6 @@ timeDelta_t getTaskDeltaTimeUs(taskId_e taskId)
     }
 }
 
-// Called by tasks executing what are known to be short states
-void ignoreTaskTime()
-{
-    ignoreCurrentTaskTime = true;
-}
-
 void schedulerSetCalulateTaskStatistics(bool calculateTaskStatisticsToUse)
 {
     calculateTaskStatistics = calculateTaskStatisticsToUse;
@@ -252,12 +279,7 @@ void schedulerResetTaskMaxExecutionTime(taskId_e taskId)
     if (taskId == TASK_SELF) {
         currentTask->maxExecutionTimeUs = 0;
     } else if (taskId < TASK_COUNT) {
-        task_t *task = getTask(taskId);
-        task->maxExecutionTimeUs = 0;
-#if defined(USE_LATE_TASK_STATISTICS)
-        task->lateCount = 0;
-        task->runCount = 0;
-#endif
+        getTask(taskId)->maxExecutionTimeUs = 0;
     }
 #else
     UNUSED(taskId);
@@ -280,7 +302,12 @@ void schedulerInit(void)
 
 void schedulerOptimizeRate(bool optimizeRate)
 {
+#if defined(USE_CHIBIOS)
+    UNUSED(optimizeRate);
+    periodCalculationBasisOffset = offsetof(task_t, lastExecutedAtUs);
+#else
     periodCalculationBasisOffset = optimizeRate ? offsetof(task_t, lastDesiredAt) : offsetof(task_t, lastExecutedAtUs);
+#endif // USE_CHIBIOS
 }
 
 inline static timeUs_t getPeriodCalculationBasis(const task_t* task)
@@ -298,7 +325,6 @@ FAST_CODE timeUs_t schedulerExecuteTask(task_t *selectedTask, timeUs_t currentTi
 
     if (selectedTask) {
         currentTask = selectedTask;
-        ignoreCurrentTaskTime = false;
         selectedTask->taskLatestDeltaTimeUs = cmpTimeUs(currentTimeUs, selectedTask->lastExecutedAtUs);
 #if defined(USE_TASK_STATISTICS)
         float period = currentTimeUs - selectedTask->lastExecutedAtUs;
@@ -313,16 +339,11 @@ FAST_CODE timeUs_t schedulerExecuteTask(task_t *selectedTask, timeUs_t currentTi
             const timeUs_t currentTimeBeforeTaskCallUs = micros();
             selectedTask->taskFunc(currentTimeBeforeTaskCallUs);
             taskExecutionTimeUs = micros() - currentTimeBeforeTaskCallUs;
-            if (!ignoreCurrentTaskTime) {
-                selectedTask->movingSumExecutionTimeUs += taskExecutionTimeUs - selectedTask->movingSumExecutionTimeUs / TASK_STATS_MOVING_SUM_COUNT;
-                selectedTask->movingSumDeltaTimeUs += selectedTask->taskLatestDeltaTimeUs - selectedTask->movingSumDeltaTimeUs / TASK_STATS_MOVING_SUM_COUNT;
-                selectedTask->maxExecutionTimeUs = MAX(selectedTask->maxExecutionTimeUs, taskExecutionTimeUs);
-            }
+            selectedTask->movingSumExecutionTimeUs += taskExecutionTimeUs - selectedTask->movingSumExecutionTimeUs / TASK_STATS_MOVING_SUM_COUNT;
+            selectedTask->movingSumDeltaTimeUs += selectedTask->taskLatestDeltaTimeUs - selectedTask->movingSumDeltaTimeUs / TASK_STATS_MOVING_SUM_COUNT;
             selectedTask->totalExecutionTimeUs += taskExecutionTimeUs;   // time consumed by scheduler + task
+            selectedTask->maxExecutionTimeUs = MAX(selectedTask->maxExecutionTimeUs, taskExecutionTimeUs);
             selectedTask->movingAverageCycleTimeUs += 0.05f * (period - selectedTask->movingAverageCycleTimeUs);
-#if defined(USE_LATE_TASK_STATISTICS)
-            selectedTask->runCount++;
-#endif
         } else
 #endif
         {
@@ -348,9 +369,6 @@ static void readSchedulerLocals(task_t *selectedTask, uint8_t selectedTaskDynami
 
 FAST_CODE void scheduler(void)
 {
-#if defined(USE_LATE_TASK_STATISTICS)
-    static task_t *lastTask;
-#endif
     // Cache currentTime
     const timeUs_t schedulerStartTimeUs = micros();
     timeUs_t currentTimeUs = schedulerStartTimeUs;
@@ -366,7 +384,7 @@ FAST_CODE void scheduler(void)
         task_t *gyroTask = getTask(TASK_GYRO);
         const timeUs_t gyroExecuteTimeUs = getPeriodCalculationBasis(gyroTask) + gyroTask->desiredPeriodUs;
         gyroTaskDelayUs = cmpTimeUs(gyroExecuteTimeUs, currentTimeUs);  // time until the next expected gyro sample
-        if (gyroTaskDelayUs <= 0) {
+        if (cmpTimeUs(currentTimeUs, gyroExecuteTimeUs) >= 0) {
             taskExecutionTimeUs = schedulerExecuteTask(gyroTask, currentTimeUs);
             if (gyroFilterReady()) {
                 taskExecutionTimeUs += schedulerExecuteTask(getTask(TASK_FILTER), currentTimeUs);
@@ -376,16 +394,6 @@ FAST_CODE void scheduler(void)
             }
             currentTimeUs = micros();
             realtimeTaskRan = true;
-
-#if defined(USE_LATE_TASK_STATISTICS)
-           // Late, so make a note of the offending task
-            if (gyroTaskDelayUs < -1) {
-                if (lastTask) {
-                    lastTask->lateCount++;
-                }
-            }
-            lastTask = NULL;
-#endif
         }
     }
 
@@ -452,9 +460,6 @@ FAST_CODE void scheduler(void)
 #if defined(USE_TASK_STATISTICS)
             if (calculateTaskStatistics) {
                 taskRequiredTimeUs = selectedTask->movingSumExecutionTimeUs / TASK_STATS_MOVING_SUM_COUNT + TASK_AVERAGE_EXECUTE_PADDING_US;
-#if defined(USE_LATE_TASK_STATISTICS)
-                selectedTask->execTime = taskRequiredTimeUs;
-#endif
             }
 #endif
             // Add in the time spent so far in check functions and the scheduler logic
@@ -464,13 +469,19 @@ FAST_CODE void scheduler(void)
             } else {
                 selectedTask = NULL;
             }
-
-#if defined(USE_LATE_TASK_STATISTICS)
-            lastTask = selectedTask;
-#endif
         }
-    }
+#if defined(USE_CHIBIOS)
+        else {
+#ifdef BRAINFPV
 
+#endif
+            // wait for gyro if no tasks are ready
+            if ((selectedTask == NULL) && gyro_sample_processed) {
+                chBSemWaitTimeout(&gyroSem, TIME_MS2I(2));
+            }
+        }
+#endif
+    }
 
 #if defined(SCHEDULER_DEBUG)
     DEBUG_SET(DEBUG_SCHEDULER, 2, micros() - schedulerStartTimeUs - taskExecutionTimeUs); // time spent in scheduler

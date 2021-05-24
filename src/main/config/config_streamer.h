@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -29,11 +29,8 @@
 #ifdef CONFIG_IN_EXTERNAL_FLASH
 #define CONFIG_STREAMER_BUFFER_SIZE 8 // Must not be greater than the smallest flash page size of all compiled-in flash devices.
 typedef uint32_t config_streamer_buffer_align_type_t;
-#elif defined(STM32H743xx) || defined(STM32H750xx) || defined(STM32H723xx) || defined(STM32H725xx)
+#elif defined(STM32H7)
 #define CONFIG_STREAMER_BUFFER_SIZE 32  // Flash word = 256-bits
-typedef uint64_t config_streamer_buffer_align_type_t;
-#elif defined(STM32H7A3xx) || defined(STM32H7A3xxQ)
-#define CONFIG_STREAMER_BUFFER_SIZE 16  // Flash word = 128-bits
 typedef uint64_t config_streamer_buffer_align_type_t;
 #elif defined(STM32G4)
 #define CONFIG_STREAMER_BUFFER_SIZE 8   // Flash word = 64-bits

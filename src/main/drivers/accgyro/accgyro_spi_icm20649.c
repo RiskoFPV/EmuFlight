@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -39,9 +39,6 @@
 #include "drivers/time.h"
 
 
-// 8 MHz max SPI frequency
-#define ICM20649_MAX_SPI_CLK_HZ 8000000
-
 static void icm20649SpiInit(const busDevice_t *bus)
 {
     static bool hardwareInitialised = false;
@@ -50,7 +47,10 @@ static void icm20649SpiInit(const busDevice_t *bus)
         return;
     }
 
-    spiSetDivisor(bus->busdev_u.spi.instance, spiCalculateDivider(ICM20649_MAX_SPI_CLK_HZ));
+
+    // all registers can be read/written at full speed (7MHz +-10%)
+    // TODO verify that this works at 9MHz and 10MHz on non F7
+    spiSetDivisor(bus->busdev_u.spi.instance, SPI_CLOCK_STANDARD);
 
     hardwareInitialised = true;
 }
@@ -59,7 +59,7 @@ uint8_t icm20649SpiDetect(const busDevice_t *bus)
 {
     icm20649SpiInit(bus);
 
-    spiSetDivisor(bus->busdev_u.spi.instance, spiCalculateDivider(ICM20649_MAX_SPI_CLK_HZ));
+    spiSetDivisor(bus->busdev_u.spi.instance, SPI_CLOCK_STANDARD);
 
     spiBusWriteRegister(bus, ICM20649_RA_REG_BANK_SEL, 0 << 4); // select bank 0 just to be safe
     delay(15);
@@ -94,7 +94,7 @@ void icm20649AccInit(accDev_t *acc)
     // 1,024 LSB/g 30g
     acc->acc_1G = acc->acc_high_fsr ? 1024 : 2048;
 
-    spiSetDivisor(acc->bus.busdev_u.spi.instance, spiCalculateDivider(ICM20649_MAX_SPI_CLK_HZ));
+    spiSetDivisor(acc->bus.busdev_u.spi.instance, SPI_CLOCK_STANDARD);
 
     spiBusWriteRegister(&acc->bus, ICM20649_RA_REG_BANK_SEL, 2 << 4); // config in bank 2
     delay(15);
@@ -122,7 +122,7 @@ void icm20649GyroInit(gyroDev_t *gyro)
 {
     mpuGyroInit(gyro);
 
-    spiSetDivisor(gyro->bus.busdev_u.spi.instance, spiCalculateDivider(ICM20649_MAX_SPI_CLK_HZ)); // ensure proper speed
+    spiSetDivisor(gyro->bus.busdev_u.spi.instance, SPI_CLOCK_STANDARD); // ensure proper speed
 
     spiBusWriteRegister(&gyro->bus, ICM20649_RA_REG_BANK_SEL, 0 << 4); // select bank 0 just to be safe
     delay(15);
@@ -166,9 +166,9 @@ bool icm20649SpiGyroDetect(gyroDev_t *gyro)
     gyro->initFn = icm20649GyroInit;
     gyro->readFn = icm20649GyroReadSPI;
 
-    // 16.384 dps/lsb scalefactor for 2000dps sensors
-    //  8.192 dps/lsb scalefactor for 4000dps sensors
-    gyro->scale = (gyro->gyro_high_fsr ? GYRO_SCALE_4000DPS : GYRO_SCALE_2000DPS);
+    // 16.4 dps/lsb 2kDps
+    //  8.2 dps/lsb 4kDps
+    gyro->scale = 1.0f / (gyro->gyro_high_fsr ? 8.2f : 16.4f);
 
     return true;
 }

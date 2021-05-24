@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -233,7 +233,7 @@ static void motor_DMA_IRQHandler(dmaChannelDescriptor_t* descriptor)
     }
 }
 
-bool pwmDshotMotorHardwareConfig(const timerHardware_t *timerHardware, uint8_t motorIndex, uint8_t reorderedMotorIndex, motorPwmProtocolTypes_e pwmProtocolType, uint8_t output)
+bool pwmDshotMotorHardwareConfig(const timerHardware_t *timerHardware, uint8_t motorIndex, motorPwmProtocolTypes_e pwmProtocolType, uint8_t output)
 {
     dmaResource_t *dmaRef = NULL;
     uint32_t dmaChannel;
@@ -285,7 +285,7 @@ bool pwmDshotMotorHardwareConfig(const timerHardware_t *timerHardware, uint8_t m
     const uint8_t timerIndex = getTimerIndex(timer);
     const bool configureTimer = (timerIndex == dmaMotorTimerCount - 1);
 
-    IOInit(motorIO, OWNER_MOTOR, RESOURCE_INDEX(reorderedMotorIndex));
+    IOInit(motorIO, OWNER_MOTOR, RESOURCE_INDEX(motorIndex));
     IOConfigGPIOAF(motorIO, motor->iocfg, timerHardware->alternateFunction);
 
     // Configure time base
@@ -373,7 +373,7 @@ P    -    High -     High -
     } else
 #endif
     {
-        dmaInit(identifier, OWNER_MOTOR, RESOURCE_INDEX(reorderedMotorIndex));
+        dmaInit(identifier, OWNER_MOTOR, RESOURCE_INDEX(motorIndex));
         dmaSetHandler(identifier, motor_DMA_IRQHandler, NVIC_PRIO_DSHOT_DMA, motorIndex);
     }
 

@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -45,13 +45,13 @@ DSHOT_DMA_BUFFER_ATTRIBUTE DSHOT_DMA_BUFFER_UNIT dshotBurstDmaBuffer[MAX_DMA_TIM
 #endif
 
 #ifdef USE_DSHOT_DMAR
-FAST_DATA_ZERO_INIT bool useBurstDshot = false;
+FAST_RAM_ZERO_INIT bool useBurstDshot = false;
 #endif
 #ifdef USE_DSHOT_TELEMETRY
-FAST_DATA_ZERO_INIT bool useDshotTelemetry = false;
+FAST_RAM_ZERO_INIT bool useDshotTelemetry = false;
 #endif
 
-FAST_DATA_ZERO_INIT loadDmaBufferFn *loadDmaBuffer;
+FAST_RAM_ZERO_INIT loadDmaBufferFn *loadDmaBuffer;
 
 FAST_CODE uint8_t loadDmaBufferDshot(uint32_t *dmaBuffer, int stride, uint16_t packet)
 {
@@ -84,12 +84,6 @@ uint32_t getDshotHz(motorPwmProtocolTypes_e pwmProtocolType)
     switch (pwmProtocolType) {
     case(PWM_TYPE_PROSHOT1000):
         return MOTOR_PROSHOT1000_HZ;
-    case(PWM_TYPE_DSHOT4800):
-        return MOTOR_DSHOT4800_HZ;
-    case(PWM_TYPE_DSHOT2400):
-        return MOTOR_DSHOT2400_HZ;
-    case(PWM_TYPE_DSHOT1200):
-        return MOTOR_DSHOT1200_HZ;
     case(PWM_TYPE_DSHOT600):
         return MOTOR_DSHOT600_HZ;
     case(PWM_TYPE_DSHOT300):
@@ -155,7 +149,7 @@ static motorVTable_t dshotPwmVTable = {
     .shutdown = dshotPwmShutdown,
 };
 
-FAST_DATA_ZERO_INIT motorDevice_t dshotPwmDevice;
+FAST_RAM_ZERO_INIT motorDevice_t dshotPwmDevice;
 
 motorDevice_t *dshotPwmDevInit(const motorDevConfig_t *motorConfig, uint16_t idlePulse, uint8_t motorCount, bool useUnsyncedPwm)
 {
@@ -173,9 +167,6 @@ motorDevice_t *dshotPwmDevInit(const motorDevConfig_t *motorConfig, uint16_t idl
     case PWM_TYPE_PROSHOT1000:
         loadDmaBuffer = loadDmaBufferProshot;
         break;
-    case PWM_TYPE_DSHOT4800:
-    case PWM_TYPE_DSHOT2400:
-    case PWM_TYPE_DSHOT1200:
     case PWM_TYPE_DSHOT600:
     case PWM_TYPE_DSHOT300:
     case PWM_TYPE_DSHOT150:
@@ -188,17 +179,15 @@ motorDevice_t *dshotPwmDevInit(const motorDevConfig_t *motorConfig, uint16_t idl
     }
 
     for (int motorIndex = 0; motorIndex < MAX_SUPPORTED_MOTORS && motorIndex < motorCount; motorIndex++) {
-        const unsigned reorderedMotorIndex = motorConfig->motorOutputReordering[motorIndex];
-        const ioTag_t tag = motorConfig->ioTags[reorderedMotorIndex];
-        const timerHardware_t *timerHardware = timerAllocate(tag, OWNER_MOTOR, RESOURCE_INDEX(reorderedMotorIndex));
+        const ioTag_t tag = motorConfig->ioTags[motorIndex];
+        const timerHardware_t *timerHardware = timerAllocate(tag, OWNER_MOTOR, RESOURCE_INDEX(motorIndex));
 
         if (timerHardware != NULL) {
             motors[motorIndex].io = IOGetByTag(tag);
-            IOInit(motors[motorIndex].io, OWNER_MOTOR, RESOURCE_INDEX(reorderedMotorIndex));
+            IOInit(motors[motorIndex].io, OWNER_MOTOR, RESOURCE_INDEX(motorIndex));
 
             if (pwmDshotMotorHardwareConfig(timerHardware,
                 motorIndex,
-                reorderedMotorIndex,
                 motorConfig->motorPwmProtocol,
                 motorConfig->motorPwmInversion ? timerHardware->output ^ TIMER_OUTPUT_INVERTED : timerHardware->output)) {
                 motors[motorIndex].enabled = true;

@@ -63,13 +63,11 @@
 
 #define IS_LL_DMA_NBDATA(__VALUE__)             ((__VALUE__)  <= 0x0000FFFFU)
 
-#if defined(TIM24)
-#define IS_LL_DMA_REQUEST(REQUEST)              (((REQUEST)   <= LL_DMAMUX1_REQ_TIM24_TRIG))
-#elif defined(ADC3)
+#if defined(ADC3)
 #define IS_LL_DMA_REQUEST(REQUEST)              (((REQUEST)   <= LL_DMAMUX1_REQ_ADC3))
 #else
 #define IS_LL_DMA_REQUEST(REQUEST)              (((REQUEST)   <= LL_DMAMUX1_REQ_USART10_TX))
-#endif /* TIM24 */
+#endif /* ADC3 */
 
 #define IS_LL_DMA_PRIORITY(__VALUE__)           (((__VALUE__) == LL_DMA_PRIORITY_LOW)    || \
                                                  ((__VALUE__) == LL_DMA_PRIORITY_MEDIUM) || \

@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -51,7 +51,6 @@
 #include "flight/imu.h"
 #include "flight/mixer.h"
 #include "flight/pid.h"
-#include "flight/pid_init.h"
 #include "flight/rpm_filter.h"
 #include "flight/servos.h"
 
@@ -90,19 +89,30 @@
 
 #include "config.h"
 
-#include "drivers/dshot.h"
-
 static bool configIsDirty; /* someone indicated that the config is modified and it is not yet saved */
 
 static bool rebootRequired = false;  // set if a config change requires a reboot to take effect
 
 pidProfile_t *currentPidProfile;
 
+#if defined(BRAINFPV)
+#include "brainfpv/brainfpv_system.h"
+#endif
+
+#ifdef USE_BRAINFPV_OSD
+#include "brainfpv/brainfpv_osd.h"
+#endif
+
 #ifndef RX_SPI_DEFAULT_PROTOCOL
 #define RX_SPI_DEFAULT_PROTOCOL 0
 #endif
 
 #define DYNAMIC_FILTER_MAX_SUPPORTED_LOOP_TIME HZ_TO_INTERVAL_US(2000)
+
+#define BETAFLIGHT_MAX_SRATE  100
+#define KISS_MAX_SRATE        99
+#define QUICK_MAX_RATE        200
+#define ACTUAL_MAX_RATE       200
 
 PG_REGISTER_WITH_RESET_TEMPLATE(pilotConfig_t, pilotConfig, PG_PILOT_CONFIG, 1);
 
@@ -122,9 +132,9 @@ PG_RESET_TEMPLATE(systemConfig_t, systemConfig,
     .cpu_overclock = DEFAULT_CPU_OVERCLOCK,
     .powerOnArmingGraceTime = 5,
     .boardIdentifier = TARGET_BOARD_IDENTIFIER,
-    .hseMhz = SYSTEM_HSE_VALUE,  // Only used for F4 and G4 targets
+    .hseMhz = SYSTEM_HSE_VALUE,  // Not used for non-F4 targets
     .configurationState = CONFIGURATION_STATE_DEFAULTS_BARE,
-    .schedulerOptimizeRate = SCHEDULER_OPTIMIZE_RATE_ON,
+    .schedulerOptimizeRate = SCHEDULER_OPTIMIZE_RATE_AUTO,
     .enableStickArming = false,
 );
 
@@ -193,18 +203,6 @@ static void adjustFilterLimit(uint16_t *parm, uint16_t resetValue)
     }
 }
 
-static void validateAndFixRatesSettings(void)
-{
-    for (unsigned profileIndex = 0; profileIndex < CONTROL_RATE_PROFILE_COUNT; profileIndex++) {
-        const ratesType_e ratesType = controlRateProfilesMutable(profileIndex)->rates_type;
-        for (unsigned axis = FD_ROLL; axis <= FD_YAW; axis++) {
-            controlRateProfilesMutable(profileIndex)->rcRates[axis] = constrain(controlRateProfilesMutable(profileIndex)->rcRates[axis], 0, ratesSettingLimits[ratesType].rc_rate_limit);
-            controlRateProfilesMutable(profileIndex)->rates[axis] = constrain(controlRateProfilesMutable(profileIndex)->rates[axis], 0, ratesSettingLimits[ratesType].srate_limit);
-            controlRateProfilesMutable(profileIndex)->rcExpo[axis] = constrain(controlRateProfilesMutable(profileIndex)->rcExpo[axis], 0, ratesSettingLimits[ratesType].expo_limit);
-        }
-    }
-}
-
 static void validateAndFixConfig(void)
 {
 #if !defined(USE_QUAD_MIXER_ONLY)
@@ -245,6 +243,7 @@ static void validateAndFixConfig(void)
     for (unsigned i = 0; i < PID_PROFILE_COUNT; i++) {
         // Fix filter settings to handle cases where an older configurator was used that
         // allowed higher cutoff limits from previous firmware versions.
+        adjustFilterLimit(&pidProfilesMutable(i)->dterm_lowpass_hz, FILTER_FREQUENCY_MAX);
         adjustFilterLimit(&pidProfilesMutable(i)->dterm_lowpass2_hz, FILTER_FREQUENCY_MAX);
         adjustFilterLimit(&pidProfilesMutable(i)->dterm_notch_hz, FILTER_FREQUENCY_MAX);
         adjustFilterLimit(&pidProfilesMutable(i)->dterm_notch_cutoff, 0);
@@ -254,12 +253,26 @@ static void validateAndFixConfig(void)
             pidProfilesMutable(i)->dterm_notch_hz = 0;
         }
 
+#ifdef USE_DYN_LPF
+        //Prevent invalid dynamic lowpass
+        if (pidProfilesMutable(i)->dyn_lpf_dterm_min_hz > pidProfilesMutable(i)->dyn_lpf_dterm_max_hz) {
+            pidProfilesMutable(i)->dyn_lpf_dterm_min_hz = 0;
+        }
+#endif
+
         if (pidProfilesMutable(i)->motor_output_limit > 100 || pidProfilesMutable(i)->motor_output_limit == 0) {
             pidProfilesMutable(i)->motor_output_limit = 100;
         }
 
         if (pidProfilesMutable(i)->auto_profile_cell_count > MAX_AUTO_DETECT_CELL_COUNT || pidProfilesMutable(i)->auto_profile_cell_count < AUTO_PROFILE_CELL_COUNT_CHANGE) {
             pidProfilesMutable(i)->auto_profile_cell_count = AUTO_PROFILE_CELL_COUNT_STAY;
+        }
+
+        // If the d_min value for any axis is >= the D gain then reset d_min to 0 for consistent Configurator behavior
+        for (unsigned axis = 0; axis <= FD_YAW; axis++) {
+            if (pidProfilesMutable(i)->d_min[axis] >= pidProfilesMutable(i)->pid[axis].D) {
+                pidProfilesMutable(i)->d_min[axis] = 0;
+            }
         }
 
 #if defined(USE_BATTERY_VOLTAGE_SAG_COMPENSATION)
@@ -526,7 +539,7 @@ static void validateAndFixConfig(void)
 #if defined(USE_DYN_IDLE)
     if (!isRpmFilterEnabled()) {
         for (unsigned i = 0; i < PID_PROFILE_COUNT; i++) {
-            pidProfilesMutable(i)->dyn_idle_min_rpm = 0;
+            pidProfilesMutable(i)->idle_min_rpm = 0;
         }
     }
 #endif // USE_DYN_IDLE
@@ -560,22 +573,51 @@ static void validateAndFixConfig(void)
     }
 #endif
 
-    validateAndFixRatesSettings();  // constrain the various rates settings to limits imposed by the rates type
-
-#if defined(USE_RX_MSP_OVERRIDE)
-    if (!rxConfig()->msp_override_channels_mask) {
-        removeModeActivationCondition(BOXMSPOVERRIDE);
-    }
-
-    for (int i = 0; i < MAX_MODE_ACTIVATION_CONDITION_COUNT; i++) {
-        const modeActivationCondition_t *mac = modeActivationConditions(i);
-        if (mac->modeId == BOXMSPOVERRIDE && ((1 << (mac->auxChannelIndex) & (rxConfig()->msp_override_channels_mask)))) {
-            rxConfigMutable()->msp_override_channels_mask &= ~(1 << (mac->auxChannelIndex + NON_AUX_CHANNEL_COUNT));
-        }
-    }
+#if defined(USE_OSD)
+    for (int i = 0; i < OSD_TIMER_COUNT; i++) {
+         const uint16_t t = osdConfig()->timers[i];
+         if (OSD_TIMER_SRC(t) >= OSD_TIMER_SRC_COUNT ||
+                 OSD_TIMER_PRECISION(t) >= OSD_TIMER_PREC_COUNT) {
+             osdConfigMutable()->timers[i] = osdTimerDefault[i];
+         }
+     }
 #endif
 
-    validateAndfixMotorOutputReordering(motorConfigMutable()->dev.motorOutputReordering, MAX_SUPPORTED_MOTORS);
+#if defined(TARGET_VALIDATECONFIG)
+    targetValidateConfiguration();
+#endif
+
+    for (unsigned i = 0; i < CONTROL_RATE_PROFILE_COUNT; i++) {
+        switch (controlRateProfilesMutable(i)->rates_type) {
+        case RATES_TYPE_BETAFLIGHT:
+        default:
+            for (int axis = FD_ROLL; axis <= FD_YAW; axis++) {
+                controlRateProfilesMutable(i)->rates[axis] = constrain(controlRateProfilesMutable(i)->rates[axis], 0, BETAFLIGHT_MAX_SRATE);
+            }
+
+            break;
+        case RATES_TYPE_RACEFLIGHT:
+            break;   // no range constraint is necessary - allows 0 - 255
+        case RATES_TYPE_KISS:
+            for (int axis = FD_ROLL; axis <= FD_YAW; axis++) {
+                controlRateProfilesMutable(i)->rates[axis] = constrain(controlRateProfilesMutable(i)->rates[axis], 0, KISS_MAX_SRATE);
+            }
+
+            break;
+        case RATES_TYPE_ACTUAL:
+            for (int axis = FD_ROLL; axis <= FD_YAW; axis++) {
+                controlRateProfilesMutable(i)->rates[axis] = constrain(controlRateProfilesMutable(i)->rates[axis], 0, ACTUAL_MAX_RATE);
+            }
+
+            break;
+        case RATES_TYPE_QUICK:
+            for (int axis = FD_ROLL; axis <= FD_YAW; axis++) {
+                controlRateProfilesMutable(i)->rates[axis] = constrain(controlRateProfilesMutable(i)->rates[axis], 0, QUICK_MAX_RATE);
+            }
+
+            break;
+        }
+    }
 
     // validate that the minimum battery cell voltage is less than the maximum cell voltage
     // reset to defaults if not
@@ -597,24 +639,32 @@ static void validateAndFixConfig(void)
         }
     }
 #endif
-
-#if defined(TARGET_VALIDATECONFIG)
-    // This should be done at the end of the validation
-    targetValidateConfiguration();
-#endif
 }
 
 void validateAndFixGyroConfig(void)
 {
     // Fix gyro filter settings to handle cases where an older configurator was used that
     // allowed higher cutoff limits from previous firmware versions.
+    adjustFilterLimit(&gyroConfigMutable()->gyro_lowpass_hz, FILTER_FREQUENCY_MAX);
+    adjustFilterLimit(&gyroConfigMutable()->gyro_lowpass2_hz, FILTER_FREQUENCY_MAX);
     adjustFilterLimit(&gyroConfigMutable()->gyro_soft_notch_hz_1, FILTER_FREQUENCY_MAX);
     adjustFilterLimit(&gyroConfigMutable()->gyro_soft_notch_cutoff_1, 0);
+    adjustFilterLimit(&gyroConfigMutable()->gyro_soft_notch_hz_2, FILTER_FREQUENCY_MAX);
+    adjustFilterLimit(&gyroConfigMutable()->gyro_soft_notch_cutoff_2, 0);
 
     // Prevent invalid notch cutoff
     if (gyroConfig()->gyro_soft_notch_cutoff_1 >= gyroConfig()->gyro_soft_notch_hz_1) {
         gyroConfigMutable()->gyro_soft_notch_hz_1 = 0;
     }
+    if (gyroConfig()->gyro_soft_notch_cutoff_2 >= gyroConfig()->gyro_soft_notch_hz_2) {
+        gyroConfigMutable()->gyro_soft_notch_hz_2 = 0;
+    }
+#ifdef USE_DYN_LPF
+    //Prevent invalid dynamic lowpass filter
+    if (gyroConfig()->dyn_lpf_gyro_min_hz > gyroConfig()->dyn_lpf_gyro_max_hz) {
+        gyroConfigMutable()->dyn_lpf_gyro_min_hz = 0;
+    }
+#endif
 
     if (gyro.sampleRateHz > 0) {
         float samplingTime = 1.0f / gyro.sampleRateHz;
@@ -625,15 +675,18 @@ void validateAndFixGyroConfig(void)
         case PWM_TYPE_STANDARD:
                 motorUpdateRestriction = 1.0f / BRUSHLESS_MOTORS_PWM_RATE;
                 break;
+        case PWM_TYPE_ONESHOT125:
+                motorUpdateRestriction = 0.0005f;
+                break;
+        case PWM_TYPE_ONESHOT42:
+                motorUpdateRestriction = 0.0001f;
+                break;
 #ifdef USE_DSHOT
         case PWM_TYPE_DSHOT150:
                 motorUpdateRestriction = 0.000250f;
                 break;
         case PWM_TYPE_DSHOT300:
                 motorUpdateRestriction = 0.0001f;
-                break;
-        case PWM_TYPE_DSHOT600:
-                motorUpdateRestriction = 0.0000625f;
                 break;
 #endif
         default:
@@ -769,9 +822,13 @@ void ensureEEPROMStructureIsValid(void)
 
 void saveConfigAndNotify(void)
 {
+#if defined(BRAINFPV)
+    brainFPVSystemSetReq(BRAINFPV_REQ_SAVE_SETTINGS);
+#else
     writeEEPROM();
     readEEPROM();
     beeperConfirmationBeeps(1);
+#endif
 }
 
 void setConfigDirty(void)

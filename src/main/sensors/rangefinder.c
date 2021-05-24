@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -100,6 +100,42 @@ static bool rangefinderDetect(rangefinderDev_t * dev, uint8_t rangefinderHardwar
                     rangefinderHardware = RANGEFINDER_HCSR04;
                     rescheduleTask(TASK_RANGEFINDER, TASK_PERIOD_MS(RANGEFINDER_HCSR04_TASK_PERIOD_MS));
                 }
+            }
+#endif
+            break;
+
+        case RANGEFINDER_SRF10:
+#ifdef USE_RANGEFINDER_SRF10
+            if (srf10Detect(dev)) {
+                rangefinderHardware = RANGEFINDER_SRF10;
+                rescheduleTask(TASK_RANGEFINDER, TASK_PERIOD_MS(RANGEFINDER_SRF10_TASK_PERIOD_MS));
+            }
+#endif
+            break;
+
+            case RANGEFINDER_HCSR04I2C:
+#ifdef USE_RANGEFINDER_HCSR04_I2C
+            if (hcsr04i2c0Detect(dev)) {
+                rangefinderHardware = RANGEFINDER_HCSR04I2C;
+                rescheduleTask(TASK_RANGEFINDER, TASK_PERIOD_MS(RANGEFINDER_HCSR04_i2C_TASK_PERIOD_MS));
+            }
+#endif
+            break;
+
+            case RANGEFINDER_VL53L0X:
+#if defined(USE_RANGEFINDER_VL53L0X)
+            if (vl53l0xDetect(dev)) {
+                rangefinderHardware = RANGEFINDER_VL53L0X;
+                rescheduleTask(TASK_RANGEFINDER, TASK_PERIOD_MS(RANGEFINDER_VL53L0X_TASK_PERIOD_MS));
+            }
+#endif
+            break;
+
+        case RANGEFINDER_UIB:
+#if defined(USE_RANGEFINDER_UIB)
+            if (uibRangefinderDetect(dev)) {
+                rangefinderHardware = RANGEFINDER_UIB;
+                rescheduleTask(TASK_RANGEFINDER, TASK_PERIOD_MS(RANGEFINDER_UIB_TASK_PERIOD_MS));
             }
 #endif
             break;

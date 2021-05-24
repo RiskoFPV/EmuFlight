@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -34,11 +34,6 @@
 #include "drivers/accgyro/accgyro.h"
 #include "drivers/accgyro/gyro_sync.h"
 
-typedef enum {
-    OFF,
-    THIRTY_TWO_K,
-    SIXTEEN_K
-} use_32k_gyro_e;
 
 bool gyroSyncCheckUpdate(gyroDev_t *gyro)
 {
@@ -52,20 +47,11 @@ bool gyroSyncCheckUpdate(gyroDev_t *gyro)
     return ret;
 }
 
-uint16_t gyroSetSampleRate(gyroDev_t *gyro, uint8_t gyro_use_32kHz)
+uint16_t gyroSetSampleRate(gyroDev_t *gyro)
 {
     uint16_t gyroSampleRateHz;
     uint16_t accSampleRateHz;
 
-    if (gyro_use_32kHz == THIRTY_TWO_K) {
-               gyro->gyroRateKHz = GYRO_RATE_32_kHz;
-               gyroSampleRateHz = 32000;
-               accSampleRateHz = 1000;
-           } else if (gyro_use_32kHz == SIXTEEN_K) {
-               gyro->gyroRateKHz = GYRO_RATE_32_kHz;
-               gyroSampleRateHz = 16000;
-               accSampleRateHz = 1000;
-           } else {
     switch (gyro->mpuDetectionResult.sensor) {
         case BMI_160_SPI:
             gyro->gyroRateKHz = GYRO_RATE_3200_Hz;
@@ -91,19 +77,11 @@ uint16_t gyroSetSampleRate(gyroDev_t *gyro, uint8_t gyro_use_32kHz)
             gyroSampleRateHz = 9000;
             accSampleRateHz = 1125;
             break;
-#ifdef USE_ACCGYRO_LSM6DSO
-        case LSM6DSO_SPI:
-            gyro->gyroRateKHz = GYRO_RATE_6664_Hz;
-            gyroSampleRateHz = 6664;   // Yes, this is correct per the datasheet. Will effectively round to 150us and 6.67KHz.
-            accSampleRateHz = 833;
-            break;
-#endif
         default:
             gyro->gyroRateKHz = GYRO_RATE_8_kHz;
             gyroSampleRateHz = 8000;
             accSampleRateHz = 1000;
             break;
-       }
     }
 
     gyro->mpuDividerDrops  = 0; // we no longer use the gyro's sample divider

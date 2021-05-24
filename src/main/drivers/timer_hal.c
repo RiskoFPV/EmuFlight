@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -732,8 +732,8 @@ static void timCCxHandler(TIM_TypeDef *tim, timerConfig_t *timerConfig)
                 timerConfig->forcedOverflowTimerValue = 0;
             } else {
                 capture = tim->ARR;
-            }
 
+            }
             timerOvrHandlerRec_t *cb = timerConfig->overflowCallbackActive;
             while (cb) {
                 cb->fn(cb, capture);
@@ -826,7 +826,7 @@ _TIM_IRQ_HANDLER(TIM3_IRQHandler, 3);
 #if USED_TIMERS & TIM_N(4)
 _TIM_IRQ_HANDLER(TIM4_IRQHandler, 4);
 #endif
-#if USED_TIMERS & TIM_N(5)
+#if USED_TIMERS & TIM_N(5) & (STM32_ST_USE_TIMER != 5)
 _TIM_IRQ_HANDLER(TIM5_IRQHandler, 5);
 #endif
 

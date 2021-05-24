@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -174,19 +174,18 @@ static uint8_t spektrumFrameStatus(rxRuntimeState_t *rxRuntimeState)
     return result;
 }
 
-static float spektrumReadRawRC(const rxRuntimeState_t *rxRuntimeState, uint8_t chan)
+static uint16_t spektrumReadRawRC(const rxRuntimeState_t *rxRuntimeState, uint8_t chan)
 {
-    float data;
+    uint16_t data;
 
     if (chan >= rxRuntimeState->channelCount) {
         return 0;
     }
 
-    if (spekHiRes) {
-        data = 0.5f * (float)spekChannelData[chan] + 988; // 2048 mode
-    } else {
-        data = spekChannelData[chan] + 988;               // 1024 mode
-    }
+    if (spekHiRes)
+        data = 988 + (spekChannelData[chan] >> 1);   // 2048 mode
+    else
+        data = 988 + spekChannelData[chan];          // 1024 mode
 
     return data;
 }

@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -29,8 +29,6 @@
 
 #include "build/version.h"
 
-#include "cli/settings.h"
-
 #include "cms/cms.h"
 #include "cms/cms_types.h"
 #include "cms/cms_menu_osd.h"
@@ -38,22 +36,19 @@
 #include "common/utils.h"
 
 #include "config/feature.h"
-
-#include "drivers/display.h"
+#include "pg/pg.h"
+#include "pg/pg_ids.h"
 
 #include "io/displayport_max7456.h"
 
 #include "osd/osd.h"
 #include "osd/osd_elements.h"
 
-#include "pg/pg.h"
-#include "pg/pg_ids.h"
-
 #include "rx/crsf.h"
 
 #include "sensors/battery.h"
 
-/* #ifdef USE_EXTENDED_CMS_MENUS
+#ifdef USE_EXTENDED_CMS_MENUS
 static uint16_t osdConfig_item_pos[OSD_ITEM_COUNT];
 
 static const void *menuOsdActiveElemsOnEnter(displayPort_t *pDisp)
@@ -90,7 +85,6 @@ const OSD_Entry menuOsdActiveElemsEntries[] =
     {"CROSSHAIRS",         OME_VISIBLE, NULL, &osdConfig_item_pos[OSD_CROSSHAIRS], DYNAMIC},
     {"HORIZON",            OME_VISIBLE, NULL, &osdConfig_item_pos[OSD_ARTIFICIAL_HORIZON], DYNAMIC},
     {"HORIZON SIDEBARS",   OME_VISIBLE, NULL, &osdConfig_item_pos[OSD_HORIZON_SIDEBARS], DYNAMIC},
-    {"UP/DOWN REFERENCE",  OME_VISIBLE, NULL, &osdConfig_item_pos[OSD_UP_DOWN_REFERENCE], DYNAMIC},
     {"TIMER 1",            OME_VISIBLE, NULL, &osdConfig_item_pos[OSD_ITEM_TIMER_1], DYNAMIC},
     {"TIMER 2",            OME_VISIBLE, NULL, &osdConfig_item_pos[OSD_ITEM_TIMER_2], DYNAMIC},
     {"REMAINING TIME ESTIMATE",       OME_VISIBLE, NULL, &osdConfig_item_pos[OSD_REMAINING_TIME_ESTIMATE], DYNAMIC},
@@ -164,7 +158,6 @@ const OSD_Entry menuOsdActiveElemsEntries[] =
     {"DISPLAY NAME",       OME_VISIBLE, NULL, &osdConfig_item_pos[OSD_DISPLAY_NAME], DYNAMIC},
     {"RC CHANNELS",        OME_VISIBLE, NULL, &osdConfig_item_pos[OSD_RC_CHANNELS], DYNAMIC},
     {"CAMERA FRAME",       OME_VISIBLE, NULL, &osdConfig_item_pos[OSD_CAMERA_FRAME], DYNAMIC},
-    {"TOTAL FLIGHTS",      OME_VISIBLE, NULL, &osdConfig_item_pos[OSD_TOTAL_FLIGHTS], DYNAMIC},
     {"BACK",               OME_Back,    NULL, NULL, 0},
     {NULL,                 OME_END,     NULL, NULL, 0}
 };
@@ -303,7 +296,7 @@ static CMS_Menu menuTimers = {
     .onDisplayUpdate = NULL,
     .entries = menuTimersEntries,
 };
-#endif */ /* USE_EXTENDED_CMS_MENUS */ 
+#endif /* USE_EXTENDED_CMS_MENUS */
 
 #ifdef USE_MAX7456
 static bool displayPortProfileMax7456_invert;
@@ -314,8 +307,6 @@ static uint8_t displayPortProfileMax7456_whiteBrightness;
 #ifdef USE_OSD_PROFILES
 static uint8_t osdConfig_osdProfileIndex;
 #endif
-
-static displayPortBackground_e osdMenuBackgroundType;
 
 static const void *cmsx_menuOsdOnEnter(displayPort_t *pDisp)
 {
@@ -329,7 +320,6 @@ static const void *cmsx_menuOsdOnEnter(displayPort_t *pDisp)
     displayPortProfileMax7456_invert = displayPortProfileMax7456()->invert;
     displayPortProfileMax7456_blackBrightness = displayPortProfileMax7456()->blackBrightness;
     displayPortProfileMax7456_whiteBrightness = displayPortProfileMax7456()->whiteBrightness;
-    osdMenuBackgroundType = osdConfig()->cms_background_type;
 #endif
 
     return NULL;
@@ -362,14 +352,6 @@ static const void *cmsx_max7456Update(displayPort_t *pDisp, const void *self)
 }
 #endif // USE_MAX7456
 
-static const void *cmsx_osdBackgroundUpdate(displayPort_t *pDisp, const void *self)
-{
-    UNUSED(self);
-    osdConfigMutable()->cms_background_type = osdMenuBackgroundType;
-    displaySetBackgroundType(pDisp, osdMenuBackgroundType);
-    return NULL;
-}
-
 const OSD_Entry cmsx_menuOsdEntries[] =
 {
     {"---OSD---",   OME_Label,   NULL,          NULL,                0},
@@ -377,16 +359,15 @@ const OSD_Entry cmsx_menuOsdEntries[] =
     {"OSD PROFILE", OME_UINT8, NULL, &(OSD_UINT8_t){&osdConfig_osdProfileIndex, 1, 3, 1}, 0},
 #endif
 #ifdef USE_EXTENDED_CMS_MENUS
-//    {"ACTIVE ELEM", OME_Submenu, cmsMenuChange, &menuOsdActiveElems, 0},
-//    {"TIMERS",      OME_Submenu, cmsMenuChange, &menuTimers,         0},
-//    {"ALARMS",      OME_Submenu, cmsMenuChange, &menuAlarms,         0},
+    {"ACTIVE ELEM", OME_Submenu, cmsMenuChange, &menuOsdActiveElems, 0},
+    {"TIMERS",      OME_Submenu, cmsMenuChange, &menuTimers,         0},
+    {"ALARMS",      OME_Submenu, cmsMenuChange, &menuAlarms,         0},
 #endif
 #ifdef USE_MAX7456
     {"INVERT",    OME_Bool,  cmsx_max7456Update, &displayPortProfileMax7456_invert,                                   0},
     {"BRT BLACK", OME_UINT8, cmsx_max7456Update, &(OSD_UINT8_t){&displayPortProfileMax7456_blackBrightness, 0, 3, 1}, 0},
     {"BRT WHITE", OME_UINT8, cmsx_max7456Update, &(OSD_UINT8_t){&displayPortProfileMax7456_whiteBrightness, 0, 3, 1}, 0},
 #endif
-    {"BACKGROUND",OME_TAB,   cmsx_osdBackgroundUpdate, &(OSD_TAB_t){&osdMenuBackgroundType, DISPLAY_BACKGROUND_COUNT - 1, lookupTableCMSMenuBackgroundType}, 0},
     {"BACK", OME_Back, NULL, NULL, 0},
     {NULL,   OME_END,  NULL, NULL, 0}
 };

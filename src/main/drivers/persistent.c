@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -47,17 +47,6 @@ void persistentObjectWrite(persistentObjectId_e id, uint32_t value)
     RTC_HandleTypeDef rtcHandle = { .Instance = RTC };
 
     HAL_RTCEx_BKUPWrite(&rtcHandle, id, value);
-
-#ifdef USE_SPRACING_PERSISTENT_RTC_WORKAROUND
-    // Also write the persistent location used by the bootloader to support DFU etc.
-    if (id == PERSISTENT_OBJECT_RESET_REASON) {
-        // SPRACING firmware sometimes enters DFU mode when MSC mode is requested
-        if (value == RESET_MSC_REQUEST) {
-            value = RESET_NONE;
-        }
-        HAL_RTCEx_BKUPWrite(&rtcHandle, PERSISTENT_OBJECT_RESET_REASON_FWONLY, value);
-    }
-#endif
 }
 
 void persistentObjectRTCEnable(void)

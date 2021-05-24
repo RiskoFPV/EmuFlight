@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -30,19 +30,21 @@
 #include "build/build_config.h"
 #include "build/version.h"
 
-#include "cms/cms.h"
-
 #include "config/feature.h"
+#include "pg/pg.h"
+#include "pg/pg_ids.h"
 
-#include "config/config.h"
 #include "common/crc.h"
 #include "common/maths.h"
 #include "common/printf.h"
 #include "common/streambuf.h"
 #include "common/utils.h"
 
+#include "cms/cms.h"
+
 #include "drivers/nvic.h"
 
+#include "config/config.h"
 #include "fc/rc_modes.h"
 #include "fc/runtime_config.h"
 
@@ -53,9 +55,6 @@
 #include "io/gps.h"
 #include "io/serial.h"
 
-#include "pg/pg.h"
-#include "pg/pg_ids.h"
-
 #include "rx/crsf.h"
 #include "rx/crsf_protocol.h"
 
@@ -65,7 +64,7 @@
 #include "telemetry/telemetry.h"
 #include "telemetry/msp_shared.h"
 
-#include "crsf.h"
+#include "telemetry/crsf.h"
 
 
 #define CRSF_CYCLETIME_US                   100000 // 100ms, 10 Hz
@@ -143,6 +142,17 @@ static void crsfFinalize(sbuf_t *dst)
     sbufSwitchToReader(dst, crsfFrame);
     // write the telemetry frame to the receiver.
     crsfRxWriteTelemetryData(sbufPtr(dst), sbufBytesRemaining(dst));
+}
+
+static int crsfFinalizeBuf(sbuf_t *dst, uint8_t *frame)
+{
+    crc8_dvb_s2_sbuf_append(dst, &crsfFrame[2]); // start at byte 2, since CRC does not include device address and frame length
+    sbufSwitchToReader(dst, crsfFrame);
+    const int frameSize = sbufBytesRemaining(dst);
+    for (int ii = 0; sbufBytesRemaining(dst); ++ii) {
+        frame[ii] = sbufReadU8(dst);
+    }
+    return frameSize;
 }
 
 /*
@@ -327,78 +337,20 @@ void crsfFrameDeviceInfo(sbuf_t *dst) {
 }
 
 #if defined(USE_CRSF_CMS_TELEMETRY)
-#define CRSF_DISPLAYPORT_MAX_CHUNK_LENGTH   50
-#define CRSF_DISPLAYPORT_BATCH_MAX          0x3F
-#define CRSF_DISPLAYPORT_FIRST_CHUNK_MASK   0x80
-#define CRSF_DISPLAYPORT_LAST_CHUNK_MASK    0x40
-#define CRSF_DISPLAYPORT_SANITIZE_MASK      0x60
-#define CRSF_RLE_CHAR_REPEATED_MASK         0x80
-#define CRSF_RLE_MAX_RUN_LENGTH             256
-#define CRSF_RLE_BATCH_SIZE                 2
 
-static uint16_t getRunLength(const void *start, const void *end)
-{
-    uint8_t *cursor = (uint8_t*)start;
-    uint8_t c = *cursor;
-    size_t runLength = 0;
-    for (; cursor != end; cursor++) {
-        if (*cursor == c) {
-            runLength++;
-        } else {
-            break;
-        }
-    }
-    return runLength;
-}
-
-static void cRleEncodeStream(sbuf_t *source, sbuf_t *dest, uint8_t maxDestLen)
-{
-    const uint8_t *destEnd = sbufPtr(dest) + maxDestLen;
-    while (sbufBytesRemaining(source) && (sbufPtr(dest) < destEnd)) {
-        const uint8_t destRemaining = destEnd - sbufPtr(dest);
-        const uint8_t *srcPtr = sbufPtr(source);
-        const uint16_t runLength = getRunLength(srcPtr, source->end);
-        uint8_t c = *srcPtr;
-        if (runLength > 1) {
-            c |=  CRSF_RLE_CHAR_REPEATED_MASK;
-            const uint8_t fullBatches = (runLength / CRSF_RLE_MAX_RUN_LENGTH);
-            const uint8_t remainder = (runLength % CRSF_RLE_MAX_RUN_LENGTH);
-            const uint8_t totalBatches = fullBatches + (remainder) ? 1 : 0;
-            if (destRemaining >= totalBatches * CRSF_RLE_BATCH_SIZE) {
-                for (unsigned int i=1; i<=totalBatches; i++) {
-                    const uint8_t batchLength = (i < totalBatches) ? CRSF_RLE_MAX_RUN_LENGTH : remainder;
-                    sbufWriteU8(dest, c);
-                    sbufWriteU8(dest, batchLength);
-                }
-                sbufAdvance(source, runLength);
-            } else {
-                break;
-            }
-        } else if (destRemaining >= runLength) {
-            sbufWriteU8(dest, c);
-            sbufAdvance(source, runLength);
-        }
-    }
-}
-
-static void crsfFrameDisplayPortChunk(sbuf_t *dst, sbuf_t *src, uint8_t batchId, uint8_t idx)
+static void crsfFrameDisplayPortRow(sbuf_t *dst, uint8_t row)
 {
     uint8_t *lengthPtr = sbufPtr(dst);
-    sbufWriteU8(dst, 0);
+    uint8_t buflen = crsfDisplayPortScreen()->cols;
+    char *rowStart = &crsfDisplayPortScreen()->buffer[row * buflen];
+    const uint8_t frameLength = CRSF_FRAME_LENGTH_EXT_TYPE_CRC + buflen;
+    sbufWriteU8(dst, frameLength);
     sbufWriteU8(dst, CRSF_FRAMETYPE_DISPLAYPORT_CMD);
     sbufWriteU8(dst, CRSF_ADDRESS_RADIO_TRANSMITTER);
     sbufWriteU8(dst, CRSF_ADDRESS_FLIGHT_CONTROLLER);
     sbufWriteU8(dst, CRSF_DISPLAYPORT_SUBCMD_UPDATE);
-    uint8_t *metaPtr = sbufPtr(dst);
-    sbufWriteU8(dst, batchId);
-    sbufWriteU8(dst, idx);
-    cRleEncodeStream(src, dst, CRSF_DISPLAYPORT_MAX_CHUNK_LENGTH);
-    if (idx == 0)  {
-        *metaPtr |= CRSF_DISPLAYPORT_FIRST_CHUNK_MASK;
-    }
-    if (!sbufBytesRemaining(src)) {
-        *metaPtr |= CRSF_DISPLAYPORT_LAST_CHUNK_MASK;
-    }
+    sbufWriteU8(dst, row);
+    sbufWriteData(dst, rowStart, buflen);
     *lengthPtr = sbufPtr(dst) - lengthPtr;
 }
 
@@ -526,11 +478,7 @@ void initCrsfTelemetry(void)
     }
 #endif
     crsfScheduleCount = (uint8_t)index;
-
-#if defined(USE_CRSF_CMS_TELEMETRY)
-    crsfDisplayportRegister();
-#endif
-}
+ }
 
 bool checkCrsfTelemetryState(void)
 {
@@ -608,25 +556,14 @@ void handleCrsfTelemetry(timeUs_t currentTimeUs)
         crsfLastCycleTime = currentTimeUs;
         return;
     }
-    static uint8_t displayPortBatchId = 0;
-    if (crsfDisplayPortIsReady() && crsfDisplayPortScreen()->updated) {
-        crsfDisplayPortScreen()->updated = false;
-        uint16_t screenSize = crsfDisplayPortScreen()->rows * crsfDisplayPortScreen()->cols;
-        uint8_t *srcStart = (uint8_t*)crsfDisplayPortScreen()->buffer;
-        uint8_t *srcEnd = (uint8_t*)(crsfDisplayPortScreen()->buffer + screenSize);
-        sbuf_t displayPortSbuf;
-        sbuf_t *src = sbufInit(&displayPortSbuf, srcStart, srcEnd);
+    const int nextRow = crsfDisplayPortNextRow();
+    if (nextRow >= 0) {
         sbuf_t crsfDisplayPortBuf;
         sbuf_t *dst = &crsfDisplayPortBuf;
-        displayPortBatchId = (displayPortBatchId  + 1) % CRSF_DISPLAYPORT_BATCH_MAX;
-        uint8_t i = 0;
-        while(sbufBytesRemaining(src)) {
-            crsfInitializeFrame(dst);
-            crsfFrameDisplayPortChunk(dst, src, displayPortBatchId, i);
-            crsfFinalize(dst);
-            crsfRxSendTelemetryData();
-            i++;
-        }
+        crsfInitializeFrame(dst);
+        crsfFrameDisplayPortRow(dst, nextRow);
+        crsfFinalize(dst);
+        crsfDisplayPortScreen()->pendingTransport[nextRow] = false;
         crsfLastCycleTime = currentTimeUs;
         return;
     }
@@ -640,19 +577,7 @@ void handleCrsfTelemetry(timeUs_t currentTimeUs)
     }
 }
 
-#if defined(UNIT_TEST)
-static int crsfFinalizeBuf(sbuf_t *dst, uint8_t *frame)
-{
-    crc8_dvb_s2_sbuf_append(dst, &crsfFrame[2]); // start at byte 2, since CRC does not include device address and frame length
-    sbufSwitchToReader(dst, crsfFrame);
-    const int frameSize = sbufBytesRemaining(dst);
-    for (int ii = 0; sbufBytesRemaining(dst); ++ii) {
-        frame[ii] = sbufReadU8(dst);
-    }
-    return frameSize;
-}
-
-STATIC_UNIT_TESTED int getCrsfFrame(uint8_t *frame, crsfFrameType_e frameType)
+int getCrsfFrame(uint8_t *frame, crsfFrameType_e frameType)
 {
     sbuf_t crsfFrameBuf;
     sbuf_t *sbuf = &crsfFrameBuf;
@@ -678,5 +603,4 @@ STATIC_UNIT_TESTED int getCrsfFrame(uint8_t *frame, crsfFrameType_e frameType)
     const int frameSize = crsfFinalizeBuf(sbuf, frame);
     return frameSize;
 }
-#endif
 #endif

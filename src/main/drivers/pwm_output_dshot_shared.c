@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -19,10 +19,9 @@
  */
 
 
-#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <string.h>
+#include <math.h>
 
 #include "platform.h"
 
@@ -51,19 +50,21 @@
 
 #include "pwm_output_dshot_shared.h"
 
-FAST_DATA_ZERO_INIT uint8_t dmaMotorTimerCount = 0;
+FAST_RAM_ZERO_INIT uint8_t dmaMotorTimerCount = 0;
 #ifdef STM32F7
-FAST_DATA_ZERO_INIT motorDmaTimer_t dmaMotorTimers[MAX_DMA_TIMERS];
-FAST_DATA_ZERO_INIT motorDmaOutput_t dmaMotors[MAX_SUPPORTED_MOTORS];
+FAST_RAM_ZERO_INIT motorDmaTimer_t dmaMotorTimers[MAX_DMA_TIMERS];
+FAST_RAM_ZERO_INIT motorDmaOutput_t dmaMotors[MAX_SUPPORTED_MOTORS];
 #else
 motorDmaTimer_t dmaMotorTimers[MAX_DMA_TIMERS];
 motorDmaOutput_t dmaMotors[MAX_SUPPORTED_MOTORS];
 #endif
 
 #ifdef USE_DSHOT_TELEMETRY
-FAST_DATA_ZERO_INIT uint32_t inputStampUs;
 
-FAST_DATA_ZERO_INIT dshotDMAHandlerCycleCounters_t dshotDMAHandlerCycleCounters;
+// TODO remove once debugging no longer needed
+FAST_RAM_ZERO_INIT uint32_t inputStampUs;
+
+FAST_RAM_ZERO_INIT dshotDMAHandlerCycleCounters_t dshotDMAHandlerCycleCounters;
 #endif
 
 motorDmaOutput_t *getMotorDmaOutput(uint8_t index)
@@ -94,6 +95,13 @@ FAST_CODE void pwmWriteDshotInt(uint8_t index, uint16_t value)
     /*If there is a command ready to go overwrite the value and send that instead*/
     if (dshotCommandIsProcessing()) {
         value = dshotCommandGetCurrent(index);
+#ifdef USE_DSHOT_TELEMETRY
+        // reset telemetry debug statistics every time telemetry is enabled
+        if (value == DSHOT_CMD_SIGNAL_LINE_CONTINUOUS_ERPM_TELEMETRY) {
+            dshotTelemetryState.invalidPacketCount = 0;
+            dshotTelemetryState.readCount = 0;
+        }
+#endif
         if (value) {
             motor->protocolControl.requestTelemetry = true;
         }
@@ -141,7 +149,7 @@ static uint32_t decodeTelemetryPacket(uint32_t buffer[], uint32_t count)
             if (bits >= 21) {
                 break;
             }
-            len = (diff + 8) / 16;
+            len = (diff + GCR_BITLEN / 2) / GCR_BITLEN;
         } else {
             len = 21 - bits;
         }
@@ -235,7 +243,7 @@ FAST_CODE_NOINLINE bool pwmStartDshotMotorUpdate(void)
                 } else {
                     dshotTelemetryState.invalidPacketCount++;
                     if (i == 0) {
-                        memcpy(dshotTelemetryState.inputBuffer, dmaMotors[i].dmaBuffer, sizeof(dshotTelemetryState.inputBuffer));
+                        memcpy(dshotTelemetryState.inputBuffer,dmaMotors[i].dmaBuffer,sizeof(dshotTelemetryState.inputBuffer));
                     }
                 }
 #ifdef USE_DSHOT_TELEMETRY_STATS

@@ -299,7 +299,7 @@ uint8_t armingFlags = 0;
 uint8_t stateFlags = 0;
 uint16_t flightModeFlags = 0;
 float rcCommand[4];
-float rcData[MAX_SUPPORTED_RC_CHANNEL_COUNT];
+int16_t rcData[MAX_SUPPORTED_RC_CHANNEL_COUNT];
 boxBitmask_t rcModeActivationMask;
 gpsSolutionData_t gpsSol;
 
@@ -396,5 +396,5 @@ bool isFlipOverAfterCrashActive(void) { return false; }
 void ws2811LedStripEnable(void) { }
 
 void setUsedLedCount(unsigned) { };
-void pinioBoxTaskControl(void) {}
+
 }

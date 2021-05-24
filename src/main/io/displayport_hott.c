@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -86,7 +86,7 @@ static int hottHeartbeat(displayPort_t *displayPort)
     return 0;
 }
 
-static void hottRedraw(displayPort_t *displayPort)
+static void hottResync(displayPort_t *displayPort)
 {
     UNUSED(displayPort);
 }
@@ -121,17 +121,17 @@ static const displayPortVTable_t hottVTable = {
     .writeChar = hottWriteChar,
     .isTransferInProgress = hottIsTransferInProgress,
     .heartbeat = hottHeartbeat,
-    .redraw = hottRedraw,
+    .resync = hottResync,
     .txBytesFree = hottTxBytesFree,
     .layerSupported = NULL,
     .layerSelect = NULL,
     .layerCopy = NULL,
 };
 
-static displayPort_t *displayPortHottInit()
+displayPort_t *displayPortHottInit()
 {
     hottDisplayPort.device = NULL;
-    displayInit(&hottDisplayPort, &hottVTable, DISPLAYPORT_DEVICE_TYPE_HOTT);
+    displayInit(&hottDisplayPort, &hottVTable);
     hottDisplayPort.useFullscreen = true;
     hottDisplayPort.rows = HOTT_TEXTMODE_DISPLAY_ROWS;
     hottDisplayPort.cols = HOTT_TEXTMODE_DISPLAY_COLUMNS;

@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -74,8 +74,8 @@
 #define USE_I2C_DEVICE_3
 
 #define I2C_DEVICE              (I2CDEV_3)
-#define I2C3_SCL                PA8        // S4 pad
-#define I2C3_SDA                PC9        // S6 pad
+#define I2C3_SCL                PC9        // S4 pad
+#define I2C3_SDA                PA8        // S6 pad
 #define BARO_I2C_INSTANCE       (I2CDEV_3)
 #else
 #define USE_I2C_DEVICE_1

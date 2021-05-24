@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -120,6 +120,24 @@ void hard_fault_handler_c(unsigned long *hardfault_args)
   _BFAR = (*((volatile unsigned long *)(0xE000ED38))) ;
 
   __asm("BKPT #0\n") ; // Break into the debugger
+}
+
+__attribute__((naked)) void HardFault_Handler(void)
+{
+  __asm volatile (
+    " movs r0,#4       \n"
+    " movs r1, lr      \n"
+    " tst r0, r1       \n"
+    " beq _MSP         \n"
+    " mrs r0, psp      \n"
+    " b _HALT          \n"
+  "_MSP:               \n"
+    " mrs r0, msp      \n"
+  "_HALT:              \n"
+    " ldr r1,[r0,#20]  \n"
+    " b hard_fault_handler_c \n"
+    " bkpt #0          \n"
+  );
 }
 
 #else

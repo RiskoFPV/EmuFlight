@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -23,7 +23,6 @@
 #include "common/axis.h"
 #include "common/filter.h"
 #include "common/time.h"
-#include "common/kalman.h"
 
 #include "drivers/accgyro/accgyro.h"
 #include "drivers/bus.h"
@@ -44,9 +43,10 @@
 #define YAW_SPIN_RECOVERY_THRESHOLD_MAX 1950
 #endif
 
-#ifdef USE_SMITH_PREDICTOR
-#define MAX_SMITH_SAMPLES 12 * 32
-#endif // USE_SMITH_PREDICTOR
+typedef union gyroLowpassFilter_u {
+    pt1Filter_t pt1FilterState;
+    biquadFilter_t biquadFilterState;
+} gyroLowpassFilter_t;
 
 typedef enum gyroDetectionFlags_e {
     GYRO_NONE_MASK = 0,
@@ -69,19 +69,6 @@ typedef struct gyroSensor_s {
     gyroCalibration_t calibration;
 } gyroSensor_t;
 
-#ifdef USE_SMITH_PREDICTOR
-typedef struct smithPredictor_s {
-    uint8_t samples;
-    uint8_t idx;
-
-    float data[MAX_SMITH_SAMPLES + 1]; // This is gonna be a ring buffer. Max of 8ms delay at 8khz
-
-    pt1Filter_t smithPredictorFilter; // filter the smith predictor output for RPY
-
-    float smithPredictorStrength;
-} smithPredictor_t;
-#endif // USE_SMITH_PREDICTOR
-
 typedef struct gyro_s {
     uint16_t sampleRateHz;
     uint32_t targetLooptime;
@@ -89,6 +76,9 @@ typedef struct gyro_s {
     float scale;
     float gyroADC[XYZ_AXIS_COUNT];     // aligned, calibrated, scaled, but unfiltered data from the sensor(s)
     float gyroADCf[XYZ_AXIS_COUNT];    // filtered gyro data
+    uint8_t sampleCount;               // gyro sensor sample counter
+    float sampleSum[XYZ_AXIS_COUNT];   // summed samples used for downsampling
+    bool downsampleFilterEnabled;      // if true then downsample using gyro lowpass 2, otherwise use averaging
 
     gyroSensor_t gyroSensor1;
 #ifdef USE_MULTI_GYRO
@@ -99,28 +89,27 @@ typedef struct gyro_s {
 
     // lowpass gyro soft filter
     filterApplyFnPtr lowpassFilterApplyFn;
-    ptnFilter_t lowpassFilter[XYZ_AXIS_COUNT];
+    gyroLowpassFilter_t lowpassFilter[XYZ_AXIS_COUNT];
+
+    // lowpass2 gyro soft filter
+    filterApplyFnPtr lowpass2FilterApplyFn;
+    gyroLowpassFilter_t lowpass2Filter[XYZ_AXIS_COUNT];
 
     // notch filters
     filterApplyFnPtr notchFilter1ApplyFn;
     biquadFilter_t notchFilter1[XYZ_AXIS_COUNT];
 
+    filterApplyFnPtr notchFilter2ApplyFn;
+    biquadFilter_t notchFilter2[XYZ_AXIS_COUNT];
+
     filterApplyFnPtr notchFilterDynApplyFn;
-    biquadFilter_t notchFilterDyn[XYZ_AXIS_COUNT][XYZ_AXIS_COUNT];
-
-    filterApplyFnPtr alphaBetaGammaApplyFn;
-    alphaBetaGammaFilter_t alphaBetaGamma[XYZ_AXIS_COUNT];
-
-    kalman_t kalmanFilterStateRate[XYZ_AXIS_COUNT];
+    filterApplyFnPtr notchFilterDynApplyFn2;
+    biquadFilter_t notchFilterDyn[XYZ_AXIS_COUNT];
+    biquadFilter_t notchFilterDyn2[XYZ_AXIS_COUNT];
 
 #ifdef USE_GYRO_DATA_ANALYSE
     gyroAnalyseState_t gyroAnalyseState;
-    float dynNotchQ;
 #endif
-
-#ifdef USE_SMITH_PREDICTOR
-    smithPredictor_t smithPredictor[XYZ_AXIS_COUNT];
-#endif // USE_SMITH_PREDICTOR
 
     uint16_t accSampleRateHz;
     uint8_t gyroToUse;
@@ -133,14 +122,12 @@ typedef struct gyro_s {
     uint8_t dynLpfFilter;
     uint16_t dynLpfMin;
     uint16_t dynLpfMax;
-    uint8_t dynLpfCurveExpo;
-    uint16_t dynLpf2Gain;
-    uint16_t dynLpf2Max;
 #endif
 
 #ifdef USE_GYRO_OVERFLOW_CHECK
     uint8_t overflowAxisMask;
 #endif
+
 } gyro_t;
 
 extern gyro_t gyro;
@@ -155,9 +142,7 @@ enum {
 enum {
     DYN_LPF_NONE = 0,
     DYN_LPF_PT1,
-    DYN_LPF_PT2,
-    DYN_LPF_PT3,
-    DYN_LPF_PT4
+    DYN_LPF_BIQUAD
 };
 
 typedef enum {
@@ -170,25 +155,31 @@ typedef enum {
 #define GYRO_CONFIG_USE_GYRO_2      1
 #define GYRO_CONFIG_USE_GYRO_BOTH   2
 
+enum {
+    FILTER_LOWPASS = 0,
+    FILTER_LOWPASS2
+};
+
 typedef struct gyroConfig_s {
     uint8_t  gyroMovementCalibrationThreshold; // people keep forgetting that moving model while init results in wrong gyro offsets. and then they never reset gyro. so this is now on by default.
     uint8_t  gyro_hardware_lpf;                // gyro DLPF setting
 
     uint8_t  gyro_high_fsr;
-    uint8_t  gyro_use_32khz;
     uint8_t  gyro_to_use;
 
-    uint16_t alpha;
-    uint16_t abg_boost;
-    uint16_t abg_half_life;
+    uint16_t gyro_lowpass_hz;
+    uint16_t gyro_lowpass2_hz;
 
     uint16_t gyro_soft_notch_hz_1;
     uint16_t gyro_soft_notch_cutoff_1;
+    uint16_t gyro_soft_notch_hz_2;
+    uint16_t gyro_soft_notch_cutoff_2;
     int16_t  gyro_offset_yaw;
     uint8_t  checkOverflow;
 
     // Lowpass primary/secondary
     uint8_t  gyro_lowpass_type;
+    uint8_t  gyro_lowpass2_type;
 
     uint8_t  yaw_spin_recovery;
     int16_t  yaw_spin_threshold;
@@ -196,34 +187,16 @@ typedef struct gyroConfig_s {
     uint16_t gyroCalibrationDuration;   // Gyro calibration duration in 1/100 second
 
     uint16_t dyn_lpf_gyro_min_hz;
-    uint8_t  dyn_lpf_gyro_width;
-    uint8_t  dyn_lpf_gyro_gain;
+    uint16_t dyn_lpf_gyro_max_hz;
 
     uint16_t dyn_notch_max_hz;
+    uint8_t  dyn_notch_width_percent;
     uint16_t dyn_notch_q;
     uint16_t dyn_notch_min_hz;
-
-#if defined(USE_GYRO_IMUF9001)
-    uint16_t imuf_mode;
-    uint16_t imuf_rate;
-    uint16_t imuf_pitch_lpf_cutoff_hz;
-    uint16_t imuf_roll_lpf_cutoff_hz;
-    uint16_t imuf_yaw_lpf_cutoff_hz;
-    uint16_t imuf_acc_lpf_cutoff_hz;
-#endif
-    uint16_t imuf_pitch_q;
-    uint16_t imuf_roll_q;
-    uint16_t imuf_yaw_q;
-    uint16_t imuf_w;
 
     uint8_t  gyro_filter_debug_axis;
 
     uint8_t gyrosDetected; // What gyros should detection be attempted for on startup. Automatically set on first startup.
-    uint8_t dyn_lpf_curve_expo; // set the curve for dynamic gyro lowpass filter
-
-    uint8_t smithPredictorStrength;
-    uint8_t smithPredictorDelay;
-    uint16_t smithPredictorFilterHz;
 } gyroConfig_t;
 
 PG_DECLARE(gyroConfig_t, gyroConfig);
@@ -241,10 +214,11 @@ bool gyroYawSpinDetected(void);
 uint16_t gyroAbsRateDps(int axis);
 #ifdef USE_DYN_LPF
 float dynThrottle(float throttle);
-void dynLpfGyroUpdate(float cutoff[XYZ_AXIS_COUNT]);
-uint16_t dynLpfGyroThrCut(float throttle);
-float dynLpfGyroCutoff(uint16_t throttle, float dynlpf2_cutoff);
+void dynLpfGyroUpdate(float throttle);
 #endif
 #ifdef USE_YAW_SPIN_RECOVERY
 void initYawSpinRecovery(int maxYawRate);
+#endif
+#ifdef USE_GYRO_DATA_ANALYSE
+bool isDynamicFilterActive(void);
 #endif

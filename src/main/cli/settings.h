@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -41,7 +41,6 @@ typedef enum {
 #ifdef USE_BLACKBOX
     TABLE_BLACKBOX_DEVICE,
     TABLE_BLACKBOX_MODE,
-    TABLE_BLACKBOX_SAMPLE_RATE,
 #endif
     TABLE_CURRENT_METER,
     TABLE_VOLTAGE_METER,
@@ -67,6 +66,7 @@ typedef enum {
     TABLE_RC_INTERPOLATION,
     TABLE_RC_INTERPOLATION_CHANNELS,
     TABLE_LOWPASS_TYPE,
+    TABLE_DTERM_LOWPASS_TYPE,
     TABLE_ANTI_GRAVITY_MODE,
     TABLE_FAILSAFE,
     TABLE_FAILSAFE_SWITCH_MODE,
@@ -101,9 +101,18 @@ typedef enum {
 #if defined(USE_MAX7456) || defined(USE_FRSKYOSD)
     TABLE_VIDEO_SYSTEM,
 #endif
+#if defined(USE_ITERM_RELAX)
+    TABLE_ITERM_RELAX,
+    TABLE_ITERM_RELAX_TYPE,
+#endif
+#ifdef USE_ACRO_TRAINER
+    TABLE_ACRO_TRAINER_DEBUG,
+#endif // USE_ACRO_TRAINER
 #ifdef USE_RC_SMOOTHING_FILTER
     TABLE_RC_SMOOTHING_TYPE,
     TABLE_RC_SMOOTHING_DEBUG,
+    TABLE_RC_SMOOTHING_INPUT_TYPE,
+    TABLE_RC_SMOOTHING_DERIVATIVE_TYPE,
 #endif // USE_RC_SMOOTHING_FILTER
 #ifdef USE_VTX_COMMON
     TABLE_VTX_LOW_POWER_DISARM,
@@ -114,6 +123,9 @@ typedef enum {
 #endif
 #ifdef USE_LAUNCH_CONTROL
     TABLE_LAUNCH_CONTROL_MODE,
+#endif
+#ifdef USE_TPA_MODE
+    TABLE_TPA_MODE,
 #endif
 #ifdef USE_LED_STRIP
     TABLE_LED_PROFILE,
@@ -128,12 +140,7 @@ typedef enum {
 #ifdef USE_OSD
     TABLE_OSD_LOGO_ON_ARMING,
 #endif
-#if defined(GYRO_USES_SPI) && defined(USE_32K_CAPABLE_GYRO)
-    TABLE_32K,
-#endif
-#ifdef USE_OSD
-    TABLE_CMS_BACKGROUND,
-#endif
+
     LOOKUP_TABLE_COUNT
 } lookupTableIndex_e;
 
@@ -251,5 +258,3 @@ extern const char * const lookupTableItermRelaxType[];
 extern const char * const lookupTableOsdDisplayPortDevice[];
 
 extern const char * const lookupTableInterpolatedSetpoint[];
-
-extern const char * const lookupTableCMSMenuBackgroundType[];

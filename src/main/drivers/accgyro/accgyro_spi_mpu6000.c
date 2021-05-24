@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -47,10 +47,7 @@
 
 static void mpu6000AccAndGyroInit(gyroDev_t *gyro);
 
-// 1 MHz max SPI frequency for initialisation
-#define MPU6000_MAX_SPI_INIT_CLK_HZ 1000000
-// 20 MHz max SPI frequency
-#define MPU6000_MAX_SPI_CLK_HZ 20000000
+
 
 // Bits
 #define BIT_SLEEP                   0x40
@@ -107,13 +104,13 @@ void mpu6000SpiGyroInit(gyroDev_t *gyro)
 
     mpu6000AccAndGyroInit(gyro);
 
-    spiSetDivisor(gyro->bus.busdev_u.spi.instance, spiCalculateDivider(MPU6000_MAX_SPI_INIT_CLK_HZ));
+    spiSetDivisor(gyro->bus.busdev_u.spi.instance, SPI_CLOCK_INITIALIZATION);
 
     // Accel and Gyro DLPF Setting
     spiBusWriteRegister(&gyro->bus, MPU6000_CONFIG, mpuGyroDLPF(gyro));
     delayMicroseconds(1);
 
-    spiSetDivisor(gyro->bus.busdev_u.spi.instance, spiCalculateDivider(MPU6000_MAX_SPI_CLK_HZ));
+    spiSetDivisor(gyro->bus.busdev_u.spi.instance, SPI_CLOCK_FAST);  // 18 MHz SPI clock
 
     mpuGyroRead(gyro);
 
@@ -130,52 +127,57 @@ void mpu6000SpiAccInit(accDev_t *acc)
 uint8_t mpu6000SpiDetect(const busDevice_t *bus)
 {
 
-    spiSetDivisor(bus->busdev_u.spi.instance, spiCalculateDivider(MPU6000_MAX_SPI_INIT_CLK_HZ));
+    spiSetDivisor(bus->busdev_u.spi.instance, SPI_CLOCK_INITIALIZATION);
 
-    // reset the device configuration
     spiBusWriteRegister(bus, MPU_RA_PWR_MGMT_1, BIT_H_RESET);
-    delay(100);  // datasheet specifies a 100ms delay after reset
 
-    // reset the device signal paths
-    spiBusWriteRegister(bus, MPU_RA_SIGNAL_PATH_RESET, BIT_GYRO | BIT_ACC | BIT_TEMP);
-    delay(100);  // datasheet specifies a 100ms delay after signal path reset
+    uint8_t attemptsRemaining = 5;
+    do {
+        delay(150);
 
-
-    const uint8_t whoAmI = spiBusReadRegister(bus, MPU_RA_WHO_AM_I);
-    uint8_t detectedSensor = MPU_NONE;
-
-    if (whoAmI == MPU6000_WHO_AM_I_CONST) {
-        const uint8_t productID = spiBusReadRegister(bus, MPU_RA_PRODUCT_ID);
-
-        /* look for a product ID we recognise */
-
-        // verify product revision
-        switch (productID) {
-        case MPU6000ES_REV_C4:
-        case MPU6000ES_REV_C5:
-        case MPU6000_REV_C4:
-        case MPU6000_REV_C5:
-        case MPU6000ES_REV_D6:
-        case MPU6000ES_REV_D7:
-        case MPU6000ES_REV_D8:
-        case MPU6000_REV_D6:
-        case MPU6000_REV_D7:
-        case MPU6000_REV_D8:
-        case MPU6000_REV_D9:
-        case MPU6000_REV_D10:
-            detectedSensor = MPU_60x0_SPI;
+        const uint8_t whoAmI = spiBusReadRegister(bus, MPU_RA_WHO_AM_I);
+        if (whoAmI == MPU6000_WHO_AM_I_CONST) {
+            break;
         }
+        if (!attemptsRemaining) {
+            return MPU_NONE;
+        }
+    } while (attemptsRemaining--);
+
+    const uint8_t productID = spiBusReadRegister(bus, MPU_RA_PRODUCT_ID);
+
+    /* look for a product ID we recognise */
+
+    // verify product revision
+    switch (productID) {
+    case MPU6000ES_REV_C4:
+    case MPU6000ES_REV_C5:
+    case MPU6000_REV_C4:
+    case MPU6000_REV_C5:
+    case MPU6000ES_REV_D6:
+    case MPU6000ES_REV_D7:
+    case MPU6000ES_REV_D8:
+    case MPU6000_REV_D6:
+    case MPU6000_REV_D7:
+    case MPU6000_REV_D8:
+    case MPU6000_REV_D9:
+    case MPU6000_REV_D10:
+        return MPU_60x0_SPI;
     }
 
-    spiSetDivisor(bus->busdev_u.spi.instance, spiCalculateDivider(MPU6000_MAX_SPI_CLK_HZ));
-    return detectedSensor;
+    return MPU_NONE;
 }
 
 static void mpu6000AccAndGyroInit(gyroDev_t *gyro)
 {
-    spiSetDivisor(gyro->bus.busdev_u.spi.instance, spiCalculateDivider(MPU6000_MAX_SPI_INIT_CLK_HZ));
+    spiSetDivisor(gyro->bus.busdev_u.spi.instance, SPI_CLOCK_INITIALIZATION);
 
-    // Device was already reset during detection so proceed with configuration
+    // Device Reset
+    spiBusWriteRegister(&gyro->bus, MPU_RA_PWR_MGMT_1, BIT_H_RESET);
+    delay(150);
+
+    spiBusWriteRegister(&gyro->bus, MPU_RA_SIGNAL_PATH_RESET, BIT_GYRO | BIT_ACC | BIT_TEMP);
+    delay(150);
 
     // Clock Source PPL with Z axis gyro reference
     spiBusWriteRegister(&gyro->bus, MPU_RA_PWR_MGMT_1, MPU_CLK_SEL_PLLGYROZ);
@@ -209,7 +211,7 @@ static void mpu6000AccAndGyroInit(gyroDev_t *gyro)
     delayMicroseconds(15);
 #endif
 
-    spiSetDivisor(gyro->bus.busdev_u.spi.instance, spiCalculateDivider(MPU6000_MAX_SPI_CLK_HZ));
+    spiSetDivisor(gyro->bus.busdev_u.spi.instance, SPI_CLOCK_FAST);
     delayMicroseconds(1);
 }
 
@@ -233,7 +235,8 @@ bool mpu6000SpiGyroDetect(gyroDev_t *gyro)
 
     gyro->initFn = mpu6000SpiGyroInit;
     gyro->readFn = mpuGyroReadSPI;
-    gyro->scale = GYRO_SCALE_2000DPS;
+    // 16.4 dps/lsb scalefactor
+    gyro->scale = 1.0f / 16.4f;
 
     return true;
 }

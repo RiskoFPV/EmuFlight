@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -46,9 +46,9 @@
 #include "flight/failsafe.h"
 
 #include "io/beeper.h"
-#include "io/usb_cdc_hid.h"
 #include "io/dashboard.h"
 #include "io/gps.h"
+#include "io/motors.h"
 #include "io/vtx_control.h"
 
 #include "pg/pg.h"
@@ -94,12 +94,10 @@ PG_RESET_TEMPLATE(flight3DConfig_t, flight3DConfig,
     .deadband3d_low = 1406,
     .deadband3d_high = 1514,
     .neutral3d = 1460,
-    .deadband3d_throttle = 5,
+    .deadband3d_throttle = 50,
     .limit3d_low = 1000,
     .limit3d_high = 2000,
-    .switched_mode3d = false,
-    .reverse3dKick = 15,
-    .reverse3dKickTime = 200,
+    .switched_mode3d = false
 );
 
 bool isUsingSticksForArming(void)
@@ -207,7 +205,7 @@ void processRcStickPositions()
             }
         }
         return;
-    } else if (rcSticks == THR_LO + YAW_HI + PIT_CE + ROL_CE && !IS_RC_MODE_ACTIVE(BOXSTICKCOMMANDDISABLE)) { // disable stick arming if STICK COMMAND DISABLE SW is active
+    } else if (rcSticks == THR_LO + YAW_HI + PIT_CE + ROL_CE) {
         if (rcDelayMs >= ARM_DELAY_MS && !doNotRepeat) {
             doNotRepeat = true;
             if (!ARMING_FLAG(ARMED)) {
@@ -230,13 +228,6 @@ void processRcStickPositions()
         return;
     }
     doNotRepeat = true;
-
-    #ifdef USE_USB_CDC_HID
-    // If this target is used as a joystick, we should leave here.
-    if (cdcDeviceIsMayBeActive() || IS_RC_MODE_ACTIVE(BOXSTICKCOMMANDDISABLE)) {
-        return;
-    }
-    #endif
 
     // actions during not armed
 
@@ -303,7 +294,7 @@ void processRcStickPositions()
 #endif
 
 
-    if (FLIGHT_MODE(ANGLE_MODE|HORIZON_MODE|NFE_RACE_MODE)) {
+    if (FLIGHT_MODE(ANGLE_MODE|HORIZON_MODE)) {
         // in ANGLE or HORIZON mode, so use sticks to apply accelerometer trims
         rollAndPitchTrims_t accelerometerTrimsDelta;
         memset(&accelerometerTrimsDelta, 0, sizeof(accelerometerTrimsDelta));

@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -34,8 +34,6 @@
 #include "drivers/io.h"
 #include "drivers/time.h"
 
-// 10 MHz max SPI frequency
-#define LPS_MAX_SPI_CLK_HZ 10000000
 //====================================Registers Addresses=========================================//
 #define LPS_REF_P_XL    0x08
 #define LPS_REF_P_L     0x09
@@ -271,9 +269,9 @@ bool lpsDetect(baroDev_t *baro)
     IOConfigGPIO(busdev->busdev_u.spi.csnPin, IOCFG_OUT_PP);
     IOHi(busdev->busdev_u.spi.csnPin); // Disable
 #ifdef USE_SPI_TRANSACTION
-    spiBusTransactionInit(busdev, SPI_MODE3_POL_HIGH_EDGE_2ND, spiCalculateDivider(LPS_MAX_SPI_CLK_HZ)); // Baro can work only on up to 10Mhz SPI bus
+    spiBusTransactionInit(busdev, SPI_MODE3_POL_HIGH_EDGE_2ND, SPI_CLOCK_STANDARD); // Baro can work only on up to 10Mhz SPI bus
 #else
-    spiBusSetDivisor(busdev, spiCalculateDivider(LPS_MAX_SPI_CLK_HZ)); // Baro can work only on up to 10Mhz SPI bus
+    spiBusSetDivisor(busdev, SPI_CLOCK_STANDARD); // Baro can work only on up to 10Mhz SPI bus
 #endif
 
     uint8_t temp = 0x00;

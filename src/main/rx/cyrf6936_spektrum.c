@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -104,8 +104,6 @@ static const uint8_t pnCodes[5][9][8] = {
 },
 };
 
-static const uint8_t bindDataCode[16] = {0x98, 0x88, 0x1B, 0xE4, 0x30, 0x79, 0x03, 0x84, 0x98, 0x88, 0x1B, 0xE4, 0x30, 0x79, 0x03, 0x84};
-
 static const uint8_t cyrf6936Config[][2] = {
     {CYRF6936_CLK_EN,          CYRF6936_RXF}, // Enable the clock
     {CYRF6936_AUTO_CAL_TIME,   0x3C}, // From manual, needed for initialization
@@ -134,26 +132,24 @@ static const uint8_t cyrf6936TransferConfig[][2] = {
 typedef enum {
     DSM2_22     = 0x01,
     DSM2_11     = 0x02,
-    DSM2_11_DX6 = 0x03,
     DSM2_11_DX8 = 0x12,
     DSMX_22     = 0xA2,
     DSMX_11     = 0xB2,
 } dsm_protocol_e;
 
-#define IS_DSM2(x) (x == DSM2_22 || x == DSM2_11 || x == DSM2_11_DX6 || x == DSM2_11_DX8)
+#define IS_DSM2(x) (x == DSM2_22 || x == DSM2_11 || x == DSM2_11_DX8)
 #define IS_DSMX(x) (!IS_DSM2(x))
 
 #define CHECK_MFG_ID(protocol, packet, id) ((IS_DSM2(protocol) && packet[0] == (~id[2]&0xFF) && packet[1] == (~id[3]&0xFF)) || \
         (IS_DSMX(protocol) && packet[0] == id[2] && packet[1] == id[3]))
 
 typedef enum {
-    DSM_RECEIVER_BIND = 0,
-    DSM_RECEIVER_BIND2,
-    DSM_RECEIVER_SYNC_A,
-    DSM_RECEIVER_SYNC_B,
-    DSM_RECEIVER_RECV,
+    DSM_RECEIVER_BIND = 0x0,
+    DSM_RECEIVER_SYNC_A = 0x1,
+    DSM_RECEIVER_SYNC_B = 0x2,
+    DSM_RECEIVER_RECV = 0x3,
 #ifdef USE_RX_SPEKTRUM_TELEMETRY
-    DSM_RECEIVER_TLM,
+    DSM_RECEIVER_TLM = 0x4,
 #endif
 } dsm_receiver_status_e;
 
@@ -178,8 +174,6 @@ typedef struct dsmReceiver_s {
 
     uint32_t timeout;
     uint32_t timeLastPacket;
-
-    uint16_t bindPackets;
 
 #ifdef USE_RX_SPEKTRUM_TELEMETRY
     uint32_t timeLastTelemetry;
@@ -267,6 +261,68 @@ static void resetReceiveTimeout(const uint32_t timeStamp)
         dsmReceiver.timeout = DSM_RECV_SHORT_TIMEOUT_US;
     } else {
         dsmReceiver.timeout = (dsmReceiver.numChannels < 8 ? DSM_RECV_LONG_TIMEOUT_US : DSM_RECV_MID_TIMEOUT_US);
+    }
+}
+
+static void checkTimeout(void)
+{
+    const uint32_t time = micros();
+
+#ifdef USE_RX_SPEKTRUM_TELEMETRY
+    if (featureIsEnabled(FEATURE_TELEMETRY) && (time - dsmReceiver.timeLastTelemetry) > DSM_TELEMETRY_TIME_US) {
+        dsmReceiver.timeLastTelemetry = time;
+        dsmReceiver.sendTelemetry = true;
+    }
+#endif
+
+    if ((time - dsmReceiver.timeLastPacket) > dsmReceiver.timeout) {
+        cyrf6936SetMode(CYRF6936_MODE_SYNTH_RX, true);
+        cyrf6936WriteRegister(CYRF6936_RX_ABORT, 0x00);
+
+        dsmReceiver.timeLastPacket += dsmReceiver.timeout;
+
+        switch (dsmReceiver.status) {
+        case DSM_RECEIVER_BIND:
+            dsmReceiver.rfChannel = (dsmReceiver.rfChannel + 2) % DSM_MAX_RF_CHANNEL;
+            cyrf6936SetChannel(dsmReceiver.rfChannel);
+            dsmReceiver.timeout = DSM_BIND_TIMEOUT_US;
+            cyrf6936StartRecv();
+            break;
+        case DSM_RECEIVER_SYNC_A:
+        case DSM_RECEIVER_SYNC_B:
+            IS_DSM2(dsmReceiver.protocol) ? dsmReceiverSetNextSyncChannel() : dsmReceiverSetNextChannel();
+            dsmReceiver.timeout = DSM_SYNC_TIMEOUT_US;
+            cyrf6936StartRecv();
+            break;
+        case DSM_RECEIVER_RECV:
+            dsmReceiver.missedPackets++;
+            DEBUG_SET(DEBUG_RX_SPEKTRUM_SPI, 0, dsmReceiver.missedPackets);
+            if (dsmReceiver.missedPackets < DSM_MAX_MISSED_PACKETS) {
+                dsmReceiverSetNextChannel();
+                if (dsmReceiver.crcSeed == ((dsmReceiver.mfgId[0] << 8) + dsmReceiver.mfgId[1])) {
+                    dsmReceiver.timeout = DSM_RECV_SHORT_TIMEOUT_US;
+                } else {
+                    dsmReceiver.timeout = DSM_RECV_TIMEOUT_OFFSET_US + (dsmReceiver.numChannels < 8 ? DSM_RECV_LONG_TIMEOUT_US : DSM_RECV_MID_TIMEOUT_US);
+                }
+                cyrf6936StartRecv();
+            } else {
+                setRssiDirect(0, RSSI_SOURCE_RX_PROTOCOL);
+                dsmReceiver.status = DSM_RECEIVER_SYNC_A;
+                dsmReceiver.timeout = DSM_SYNC_TIMEOUT_US;
+            }
+            break;
+#ifdef USE_RX_SPEKTRUM_TELEMETRY
+        case DSM_RECEIVER_TLM:
+            DEBUG_SET(DEBUG_RX_SPEKTRUM_SPI, 2, (cyrf6936ReadRegister(CYRF6936_TX_IRQ_STATUS) & CYRF6936_TXC_IRQ) == 0);
+            dsmReceiverSetNextChannel();
+            dsmReceiver.status = DSM_RECEIVER_RECV;
+            dsmReceiver.timeout = (dsmReceiver.numChannels < 8 ? DSM_RECV_LONG_TIMEOUT_US : DSM_RECV_MID_TIMEOUT_US) - DSM_TELEMETRY_TIMEOUT_US;
+            cyrf6936StartRecv();
+            break;
+#endif
+        default:
+            break;
+        }
     }
 }
 
@@ -381,96 +437,6 @@ static void dsmSendTelemetryPacket(void)
 }
 #endif
 
-static void dsmSendBindPacket(void)
-{
-    uint8_t packet[10];
-    uint16_t sum = 384 - 0x10;
-    packet[0] = 0xff ^ dsmReceiver.mfgId[0];
-    packet[1] = 0xff ^ dsmReceiver.mfgId[1];
-    packet[2] = 0xff ^ dsmReceiver.mfgId[2];
-    packet[3] = 0xff ^ dsmReceiver.mfgId[3];
-    packet[4] = 0x01;
-    packet[5] = dsmReceiver.numChannels;
-    packet[6] = dsmReceiver.protocol;
-    packet[7] = 0x00;
-    for(unsigned i = 0; i < 8; i++)
-        sum += packet[i];
-    packet[8] = sum >> 8;
-    packet[9] = sum & 0xff;
-    cyrf6936SetMode(CYRF6936_MODE_IDLE, true);
-    cyrf6936SendLen(packet, 10);
-}
-
-static void checkTimeout(void)
-{
-    const uint32_t time = micros();
-
-#ifdef USE_RX_SPEKTRUM_TELEMETRY
-    if (featureIsEnabled(FEATURE_TELEMETRY) && (time - dsmReceiver.timeLastTelemetry) > DSM_TELEMETRY_TIME_US) {
-        dsmReceiver.timeLastTelemetry = time;
-        dsmReceiver.sendTelemetry = true;
-    }
-#endif
-
-    if ((time - dsmReceiver.timeLastPacket) > dsmReceiver.timeout) {
-        cyrf6936SetMode(CYRF6936_MODE_SYNTH_RX, true);
-        cyrf6936WriteRegister(CYRF6936_RX_ABORT, 0x00);
-
-        dsmReceiver.timeLastPacket += dsmReceiver.timeout;
-
-        switch (dsmReceiver.status) {
-        case DSM_RECEIVER_BIND:
-            dsmReceiver.rfChannel = (dsmReceiver.rfChannel + 2) % DSM_MAX_RF_CHANNEL;
-            cyrf6936SetChannel(dsmReceiver.rfChannel);
-            dsmReceiver.timeout = DSM_BIND_TIMEOUT_US;
-            cyrf6936StartRecv();
-            break;
-        case DSM_RECEIVER_BIND2:
-            if (dsmReceiver.bindPackets++ > DSM_MAX_BIND_PACKETS) {
-                dsmReceiverStartTransfer();
-            } else {
-                dsmReceiver.timeout = DSM_BIND_TIMEOUT_US;
-                dsmSendBindPacket();
-            }
-            break;
-        case DSM_RECEIVER_SYNC_A:
-        case DSM_RECEIVER_SYNC_B:
-            IS_DSM2(dsmReceiver.protocol) ? dsmReceiverSetNextSyncChannel() : dsmReceiverSetNextChannel();
-            dsmReceiver.timeout = DSM_SYNC_TIMEOUT_US;
-            cyrf6936StartRecv();
-            break;
-        case DSM_RECEIVER_RECV:
-            dsmReceiver.missedPackets++;
-            DEBUG_SET(DEBUG_RX_SPEKTRUM_SPI, 0, dsmReceiver.missedPackets);
-            if (dsmReceiver.missedPackets < DSM_MAX_MISSED_PACKETS) {
-                dsmReceiverSetNextChannel();
-                if (dsmReceiver.crcSeed == ((dsmReceiver.mfgId[0] << 8) + dsmReceiver.mfgId[1])) {
-                    dsmReceiver.timeout = DSM_RECV_SHORT_TIMEOUT_US;
-                } else {
-                    dsmReceiver.timeout = dsmReceiver.numChannels < 8 ? DSM_RECV_LONG_TIMEOUT_US : DSM_RECV_MID_TIMEOUT_US;
-                }
-                cyrf6936StartRecv();
-            } else {
-                setRssiDirect(0, RSSI_SOURCE_RX_PROTOCOL);
-                dsmReceiver.status = DSM_RECEIVER_SYNC_A;
-                dsmReceiver.timeout = DSM_SYNC_TIMEOUT_US;
-            }
-            break;
-#ifdef USE_RX_SPEKTRUM_TELEMETRY
-        case DSM_RECEIVER_TLM:
-            DEBUG_SET(DEBUG_RX_SPEKTRUM_SPI, 2, (cyrf6936ReadRegister(CYRF6936_TX_IRQ_STATUS) & CYRF6936_TXC_IRQ) == 0);
-            dsmReceiverSetNextChannel();
-            dsmReceiver.status = DSM_RECEIVER_RECV;
-            dsmReceiver.timeout = (dsmReceiver.numChannels < 8 ? DSM_RECV_LONG_TIMEOUT_US : DSM_RECV_MID_TIMEOUT_US) - DSM_TELEMETRY_TIMEOUT_US;
-            cyrf6936StartRecv();
-            break;
-#endif
-        default:
-            break;
-        }
-    }
-}
-
 void spektrumSpiSetRcDataFromPayload(uint16_t *rcData, const uint8_t *payload)
 {
     if (rcData && payload) {
@@ -562,14 +528,9 @@ rx_spi_received_e spektrumReadPacket(uint8_t *payload, const uint32_t timeStamp)
         spektrumConfigMutable()->protocol = dsmReceiver.protocol;
         writeEEPROM();
 
-        cyrf6936SetDataCode(bindDataCode);
+        dsmReceiverStartTransfer();
 
-        dsmReceiver.bindPackets = 0;
-        dsmReceiver.status = DSM_RECEIVER_BIND2;
-        dsmReceiver.timeLastPacket = timeStamp;
-        dsmReceiver.timeout = DSM_BIND_TIMEOUT_US;
         dsmReceiver.bound = true;
-
         result = RX_SPI_RECEIVED_BIND;
         break;
     case DSM_RECEIVER_SYNC_A:
@@ -587,8 +548,6 @@ rx_spi_received_e spektrumReadPacket(uint8_t *payload, const uint32_t timeStamp)
             IS_DSM2(dsmReceiver.protocol) ? dsmReceiverSetNextSyncChannel() : dsmReceiverSetNextChannel();
             resetReceiveTimeout(timeStamp);
             cyrf6936StartRecv();
-
-            result = RX_SPI_RECEIVED_DATA;
         }
         break;
     case DSM_RECEIVER_SYNC_B:
@@ -606,8 +565,6 @@ rx_spi_received_e spektrumReadPacket(uint8_t *payload, const uint32_t timeStamp)
                 resetReceiveTimeout(timeStamp);
                 cyrf6936StartRecv();
             }
-
-            result = RX_SPI_RECEIVED_DATA;
         }
         break;
     case DSM_RECEIVER_RECV:
@@ -657,7 +614,7 @@ rx_spi_received_e spektrumSpiDataReceived(uint8_t *payload)
 
     checkTimeout();
 
-    dsmReceiver.bound ? (dsmReceiver.status == DSM_RECEIVER_BIND2 ? rxSpiLedBlinkRxLoss(RX_SPI_RECEIVED_DATA) : rxSpiLedBlinkRxLoss(result)) : rxSpiLedBlinkBind();
+    dsmReceiver.bound ? rxSpiLedBlinkRxLoss(result) : rxSpiLedBlinkBind();
 
     return result;
 }

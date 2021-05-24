@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -37,9 +37,6 @@
 #pragma GCC diagnostic warning "-Wpadded"
 #endif
 
-#define GYRO_SCALE_2000DPS (2000.0f / (1 << 15))   // 16.384 dps/lsb scalefactor for 2000dps sensors
-#define GYRO_SCALE_4000DPS (4000.0f / (1 << 15))   //  8.192 dps/lsb scalefactor for 4000dps sensors
-
 typedef enum {
     GYRO_NONE = 0,
     GYRO_DEFAULT,
@@ -58,7 +55,6 @@ typedef enum {
     GYRO_ICM42605,
     GYRO_BMI160,
     GYRO_BMI270,
-    GYRO_LSM6DSO,
     GYRO_FAKE
 } gyroHardware_e;
 
@@ -74,7 +70,6 @@ typedef enum {
     GYRO_RATE_1100_Hz,
     GYRO_RATE_3200_Hz,
     GYRO_RATE_6400_Hz,
-    GYRO_RATE_6664_Hz,
     GYRO_RATE_8_kHz,
     GYRO_RATE_9_kHz,
     GYRO_RATE_32_kHz,

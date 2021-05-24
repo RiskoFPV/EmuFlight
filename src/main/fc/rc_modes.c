@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -24,25 +24,21 @@
 
 #include "platform.h"
 
+#include "rc_modes.h"
+
 #include "common/bitarray.h"
 #include "common/maths.h"
-
 #include "drivers/time.h"
 
-#include "config/config.h"
 #include "config/feature.h"
-
-#include "fc/rc_controls.h"
-
-#include "io/piniobox.h"
-
 #include "pg/pg.h"
 #include "pg/pg_ids.h"
 #include "pg/rx.h"
 
-#include "rx/rx.h"
+#include "config/config.h"
+#include "fc/rc_controls.h"
 
-#include "rc_modes.h"
+#include "rx/rx.h"
 
 #define STICKY_MODE_BOOT_DELAY_US 5e6
 
@@ -253,7 +249,4 @@ void analyzeModeActivationConditions(void)
             activeMacArray[activeMacCount++] = i;
         }
     }
-#ifdef USE_PINIOBOX
-    pinioBoxTaskControl();
-#endif
 }

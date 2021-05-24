@@ -103,8 +103,6 @@
          (##) Payload phase: IP processes the plaintext (P) with hash computation + keystream
           encryption + data XORing. It works in a similar way for ciphertext (C).
          (##) Final phase: IP generates the authenticated tag (T) using the last block of data.
-          HAL_CRYPEx_AESGCM_GenerateAuthTAG API used in this phase to generate 4 words which correspond
-          to the Tag. user should consider only part of this 4 words, if Tag length is less than 128 bits. 
       (#)  structure of message construction in GCM is defined as below  :
          (##) 16 bytes Initial Counter Block (ICB)composed of IV and counter
          (##) The authenticated header A (also knows as Additional Authentication Data AAD)
@@ -145,8 +143,6 @@
          (##) Payload phase: IP processes the plaintext (P) with hash computation + keystream
           encryption + data XORing. It works in a similar way for ciphertext (C).
          (##) Final phase: IP generates the authenticated tag (T) using the last block of data.
-         HAL_CRYPEx_AESCCM_GenerateAuthTAG API used in this phase to generate 4 words which correspond to the Tag.
-         user should consider only part of this 4 words, if Tag length is less than 128 bits
 
   *** Callback registration ***
   =============================
@@ -904,7 +900,7 @@ HAL_StatusTypeDef HAL_CRYP_UnRegisterCallback(CRYP_HandleTypeDef *hcryp, HAL_CRY
   * @param  hcryp: pointer to a CRYP_HandleTypeDef structure that contains
   *         the configuration information for CRYP module
   * @param  Input: Pointer to the input buffer (plaintext)
-  * @param  Size: Length of the plaintext buffer either in word or in byte, according to DataWidthUnit.
+  * @param  Size: Length of the plaintext buffer in word.
   * @param  Output: Pointer to the output buffer(ciphertext)
   * @param  Timeout: Specify Timeout value
   * @retval HAL status
@@ -1034,7 +1030,7 @@ HAL_StatusTypeDef HAL_CRYP_Encrypt(CRYP_HandleTypeDef *hcryp, uint32_t *Input, u
   * @param  hcryp: pointer to a CRYP_HandleTypeDef structure that contains
   *         the configuration information for CRYP module
   * @param  Input: Pointer to the input buffer (ciphertext )
-  * @param  Size: Length of the plaintext buffer either in word or in byte, according to DataWidthUnit
+  * @param  Size: Length of the plaintext buffer in word.
   * @param  Output: Pointer to the output buffer(plaintext)
   * @param  Timeout: Specify Timeout value
   * @retval HAL status
@@ -1165,7 +1161,7 @@ HAL_StatusTypeDef HAL_CRYP_Decrypt(CRYP_HandleTypeDef *hcryp, uint32_t *Input, u
   * @param  hcryp: pointer to a CRYP_HandleTypeDef structure that contains
   *         the configuration information for CRYP module
   * @param  Input: Pointer to the input buffer (plaintext)
-  * @param  Size: Length of the plaintext buffer either in word or in byte, according to DataWidthUnit
+  * @param  Size: Length of the plaintext buffer in word
   * @param  Output: Pointer to the output buffer(ciphertext)
   * @retval HAL status
   */
@@ -1282,7 +1278,7 @@ HAL_StatusTypeDef HAL_CRYP_Encrypt_IT(CRYP_HandleTypeDef *hcryp, uint32_t *Input
   * @param  hcryp: pointer to a CRYP_HandleTypeDef structure that contains
   *         the configuration information for CRYP module
   * @param  Input: Pointer to the input buffer (ciphertext )
-  * @param  Size: Length of the plaintext buffer either in word or in byte, according to DataWidthUnit
+  * @param  Size: Length of the plaintext buffer in word.
   * @param  Output: Pointer to the output buffer(plaintext)
   * @retval HAL status
   */
@@ -1401,7 +1397,7 @@ HAL_StatusTypeDef HAL_CRYP_Decrypt_IT(CRYP_HandleTypeDef *hcryp, uint32_t *Input
   * @param  hcryp: pointer to a CRYP_HandleTypeDef structure that contains
   *         the configuration information for CRYP module
   * @param  Input: Pointer to the input buffer (plaintext)
-  * @param  Size: Length of the plaintext buffer either in word or in byte, according to DataWidthUnit
+  * @param  Size: Length of the plaintext buffer in word.
   * @param  Output: Pointer to the output buffer(ciphertext)
   * @retval HAL status
   */
@@ -1554,7 +1550,7 @@ HAL_StatusTypeDef HAL_CRYP_Encrypt_DMA(CRYP_HandleTypeDef *hcryp, uint32_t *Inpu
   * @param  hcryp: pointer to a CRYP_HandleTypeDef structure that contains
   *         the configuration information for CRYP module
   * @param  Input: Pointer to the input buffer (ciphertext )
-  * @param  Size: Length of the plaintext buffer either in word or in byte, according to DataWidthUnit
+  * @param  Size: Length of the plaintext buffer in word
   * @param  Output: Pointer to the output buffer(plaintext)
   * @retval HAL status
   */

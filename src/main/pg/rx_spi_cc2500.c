@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -29,7 +29,7 @@
 
 #include "rx_spi_cc2500.h"
 
-PG_REGISTER_WITH_RESET_TEMPLATE(rxCc2500SpiConfig_t, rxCc2500SpiConfig, PG_RX_CC2500_SPI_CONFIG, 2);
+PG_REGISTER_WITH_RESET_TEMPLATE(rxCc2500SpiConfig_t, rxCc2500SpiConfig, PG_RX_CC2500_SPI_CONFIG, 1);
 
 #if defined(RX_CC2500_SPI_DISABLE_CHIP_DETECTION)
 #define CC2500_SPI_CHIP_DETECTION false
@@ -39,7 +39,7 @@ PG_REGISTER_WITH_RESET_TEMPLATE(rxCc2500SpiConfig_t, rxCc2500SpiConfig, PG_RX_CC
 
 PG_RESET_TEMPLATE(rxCc2500SpiConfig_t, rxCc2500SpiConfig,
     .autoBind = false,
-    .bindTxId = {0, 0, 0},
+    .bindTxId = {0, 0},
     .bindOffset = 0,
     .bindHopData = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

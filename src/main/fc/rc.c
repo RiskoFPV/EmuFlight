@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -27,6 +27,7 @@
 #include "build/debug.h"
 
 #include "common/axis.h"
+#include "common/maths.h"
 #include "common/utils.h"
 
 #include "config/config.h"
@@ -43,7 +44,7 @@
 #include "flight/imu.h"
 #include "flight/interpolated_setpoint.h"
 #include "flight/gps_rescue.h"
-#include "flight/pid_init.h"
+#include "flight/pid.h"
 
 #include "pg/rx.h"
 
@@ -60,12 +61,12 @@ typedef float (applyRatesFn)(const int axis, float rcCommandf, const float rcCom
 #ifdef USE_INTERPOLATED_SP
 // Setpoint in degrees/sec before RC-Smoothing is applied
 static float rawSetpoint[XYZ_AXIS_COUNT];
+// Stick deflection [-1.0, 1.0] before RC-Smoothing is applied
+static float rawDeflection[XYZ_AXIS_COUNT];
 static float oldRcCommand[XYZ_AXIS_COUNT];
-float rcCommandDelta[XYZ_AXIS_COUNT];
 #endif
-static float last_predicted_rc[4];
 static float setpointRate[3], rcDeflection[3], rcDeflectionAbs[3];
-static float throttlePAttenuation, throttleIAttenuation, throttleDAttenuation;
+static float throttlePIDAttenuation;
 static bool reverseMotors = false;
 static applyRatesFn *applyRates;
 static uint16_t currentRxRefreshRate;
@@ -73,8 +74,8 @@ static bool isRxDataNew = false;
 static float rcCommandDivider = 500.0f;
 static float rcCommandYawDivider = 500.0f;
 
-FAST_DATA_ZERO_INIT uint8_t interpolationChannels;
-static FAST_DATA_ZERO_INIT bool newRxDataForFF;
+FAST_RAM_ZERO_INIT uint8_t interpolationChannels;
+static FAST_RAM_ZERO_INIT uint32_t rcFrameNumber;
 
 enum {
     ROLL_FLAG = 1 << ROLL,
@@ -84,6 +85,7 @@ enum {
 };
 
 #ifdef USE_RC_SMOOTHING_FILTER
+#define RC_SMOOTHING_IDENTITY_FREQUENCY         80    // Used in the formula to convert a BIQUAD cutoff frequency to PT1
 #define RC_SMOOTHING_FILTER_STARTUP_DELAY_MS    5000  // Time to wait after power to let the PID loop stabilize before starting average frame rate calculation
 #define RC_SMOOTHING_FILTER_TRAINING_SAMPLES    50    // Number of rx frame rate samples to average during initial training
 #define RC_SMOOTHING_FILTER_RETRAINING_SAMPLES  20    // Number of rx frame rate samples to average during frame rate changes
@@ -92,23 +94,17 @@ enum {
 #define RC_SMOOTHING_RX_RATE_CHANGE_PERCENT     20    // Look for samples varying this much from the current detected frame rate to initiate retraining
 #define RC_SMOOTHING_RX_RATE_MIN_US             1000  // 1ms
 #define RC_SMOOTHING_RX_RATE_MAX_US             50000 // 50ms or 20hz
-#define RC_SMOOTHING_INTERPOLATED_FEEDFORWARD_INITIAL_HZ 100 // Initial value for "auto" when interpolated feedforward is enabled
+#define RC_SMOOTHING_INTERPOLATED_FEEDFORWARD_DERIVATIVE_PT1_HZ 100 // The value to use for "auto" when interpolated feedforward is enabled
 
-static FAST_DATA_ZERO_INIT rcSmoothingFilter_t rcSmoothingData;
+static FAST_RAM_ZERO_INIT rcSmoothingFilter_t rcSmoothingData;
 #endif // USE_RC_SMOOTHING_FILTER
 
-bool getShouldUpdateFf()
-// only used in pid.c when interpolated_sp is active to initiate a new FF value
+uint32_t getRcFrameNumber()
 {
-    const bool updateFf = newRxDataForFF;
-    if (newRxDataForFF == true){
-        newRxDataForFF = false;
-    }
-    return updateFf;
+    return rcFrameNumber;
 }
 
 float getSetpointRate(int axis)
-// only used in pid.c to provide setpointRate for the crash recovery function
 {
     return setpointRate[axis];
 }
@@ -123,19 +119,9 @@ float getRcDeflectionAbs(int axis)
     return rcDeflectionAbs[axis];
 }
 
-float getThrottlePAttenuation(void)
+float getThrottlePIDAttenuation(void)
 {
-    return throttlePAttenuation;
-}
-
-float getThrottleIAttenuation(void)
-{
-    return throttleIAttenuation;
-}
-
-float getThrottleDAttenuation(void)
-{
-    return throttleDAttenuation;
+    return throttlePIDAttenuation;
 }
 
 #ifdef USE_INTERPOLATED_SP
@@ -144,9 +130,9 @@ float getRawSetpoint(int axis)
     return rawSetpoint[axis];
 }
 
-float getRcCommandDelta(int axis)
+float getRawDeflection(int axis)
 {
-    return rcCommandDelta[axis];
+    return rawDeflection[axis];
 }
 
 #endif
@@ -162,6 +148,7 @@ static int16_t rcLookupThrottle(int32_t tmp)
 }
 
 #define SETPOINT_RATE_LIMIT 1998
+STATIC_ASSERT(CONTROL_RATE_CONFIG_RATE_LIMIT_MAX <= SETPOINT_RATE_LIMIT, CONTROL_RATE_CONFIG_RATE_LIMIT_MAX_too_large);
 
 #define RC_RATE_INCREMENTAL 14.54f
 
@@ -202,7 +189,7 @@ float applyKissRates(const int axis, float rcCommandf, const float rcCommandfAbs
 
     float kissRpyUseRates = 1.0f / (constrainf(1.0f - (rcCommandfAbs * (currentControlRateProfile->rates[axis] / 100.0f)), 0.01f, 1.00f));
     float kissRcCommandf = (power3(rcCommandf) * rcCurvef + rcCommandf * (1 - rcCurvef)) * (currentControlRateProfile->rcRates[axis] / 1000.0f);
-    float kissAngle = ((2000.0f * kissRpyUseRates) * kissRcCommandf);
+    float kissAngle = constrainf(((2000.0f * kissRpyUseRates) * kissRcCommandf), -SETPOINT_RATE_LIMIT, SETPOINT_RATE_LIMIT);
 
     return kissAngle;
 }
@@ -210,7 +197,7 @@ float applyKissRates(const int axis, float rcCommandf, const float rcCommandfAbs
 float applyActualRates(const int axis, float rcCommandf, const float rcCommandfAbs)
 {
     float expof = currentControlRateProfile->rcExpo[axis] / 100.0f;
-    expof = rcCommandfAbs * (powf(rcCommandf, 5) * expof + rcCommandf * (1 - expof));
+    expof = rcCommandfAbs * (powerf(rcCommandf, 5) * expof + rcCommandf * (1 - expof));
 
     const float centerSensitivity = currentControlRateProfile->rcRates[axis] * 10.0f;
     const float stickMovement = MAX(0, currentControlRateProfile->rates[axis] * 10.0f - centerSensitivity);
@@ -219,9 +206,28 @@ float applyActualRates(const int axis, float rcCommandf, const float rcCommandfA
     return angleRate;
 }
 
+float applyQuickRates(const int axis, float rcCommandf, const float rcCommandfAbs)
+{
+    const uint16_t rcRate = currentControlRateProfile->rcRates[axis] * 2;
+    const uint16_t maxDPS = MAX(currentControlRateProfile->rates[axis] * 10, rcRate);
+    const float linearity = currentControlRateProfile->rcExpo[axis] / 100.0f;
+    const float superFactorConfig = ((float)maxDPS / rcRate - 1) / ((float)maxDPS / rcRate);
+
+    float curve = power3(rcCommandfAbs) * linearity + rcCommandfAbs * (1 - linearity);
+    float superfactor = 1.0f / (constrainf(1.0f - (curve * superFactorConfig), 0.01f, 1.00f));
+    float angleRate = constrainf(rcCommandf * rcRate * superfactor, -SETPOINT_RATE_LIMIT, SETPOINT_RATE_LIMIT);
+
+    return angleRate;
+}
+
 float applyCurve(int axis, float deflection)
 {
     return applyRates(axis, deflection, fabsf(deflection));
+}
+
+float getRcCurveSlope(int axis, float deflection)
+{
+    return (applyCurve(axis, deflection + 0.01f) - applyCurve(axis, deflection)) * 100.0f;
 }
 
 static void calculateSetpointRate(int axis)
@@ -247,7 +253,7 @@ static void calculateSetpointRate(int axis)
         } else {
             rcCommandf = rcCommand[axis] / rcCommandDivider;
         }
-
+        
         rcDeflection[axis] = rcCommandf;
         const float rcCommandfAbs = fabsf(rcCommandf);
         rcDeflectionAbs[axis] = rcCommandfAbs;
@@ -255,23 +261,19 @@ static void calculateSetpointRate(int axis)
         angleRate = applyRates(axis, rcCommandf, rcCommandfAbs);
     }
     // Rate limit from profile (deg/sec)
-    setpointRate[axis] = constrainf(angleRate, -SETPOINT_RATE_LIMIT * 1.0f, SETPOINT_RATE_LIMIT * 1.0f);
+    setpointRate[axis] = constrainf(angleRate, -1.0f * currentControlRateProfile->rate_limit[axis], 1.0f * currentControlRateProfile->rate_limit[axis]);
 
     DEBUG_SET(DEBUG_ANGLERATE, axis, angleRate);
 }
 
 static void scaleRcCommandToFpvCamAngle(void)
 {
-    float currentPitchAngle = constrainf(attitude.raw[FD_PITCH] * 0.1f,-rxConfig()->fpvCamAngleDegrees,rxConfig()->fpvCamAngleDegrees);
     //recalculate sin/cos only when rxConfig()->fpvCamAngleDegrees changed
     static uint8_t lastFpvCamAngleDegrees = 0;
     static float cosFactor = 1.0;
     static float sinFactor = 0.0;
 
-    if (rxConfig()->yawAroundGravity) {
-        cosFactor = cos_approx(currentPitchAngle * RAD);
-        sinFactor = sin_approx(currentPitchAngle * RAD);
-    } else if (lastFpvCamAngleDegrees != rxConfig()->fpvCamAngleDegrees) {
+    if (lastFpvCamAngleDegrees != rxConfig()->fpvCamAngleDegrees) {
         lastFpvCamAngleDegrees = rxConfig()->fpvCamAngleDegrees;
         cosFactor = cos_approx(rxConfig()->fpvCamAngleDegrees * RAD);
         sinFactor = sin_approx(rxConfig()->fpvCamAngleDegrees * RAD);
@@ -279,8 +281,8 @@ static void scaleRcCommandToFpvCamAngle(void)
 
     float roll = setpointRate[ROLL];
     float yaw = setpointRate[YAW];
-    setpointRate[ROLL] = constrainf(roll * cosFactor -  yaw * sinFactor, -SETPOINT_RATE_LIMIT, SETPOINT_RATE_LIMIT);
-    setpointRate[YAW]  = constrainf(yaw  * cosFactor + roll * sinFactor, -SETPOINT_RATE_LIMIT, SETPOINT_RATE_LIMIT);
+    setpointRate[ROLL] = constrainf(roll * cosFactor -  yaw * sinFactor, -SETPOINT_RATE_LIMIT * 1.0f, SETPOINT_RATE_LIMIT * 1.0f);
+    setpointRate[YAW]  = constrainf(yaw  * cosFactor + roll * sinFactor, -SETPOINT_RATE_LIMIT * 1.0f, SETPOINT_RATE_LIMIT * 1.0f);
 }
 
 #define THROTTLE_BUFFER_MAX 20
@@ -313,9 +315,9 @@ static void checkForThrottleErrorResetState(uint16_t rxRefreshRate)
 
 static FAST_CODE uint8_t processRcInterpolation(void)
 {
-    static FAST_DATA_ZERO_INIT float rcCommandInterp[4];
-    static FAST_DATA_ZERO_INIT float rcStepSize[4];
-    static FAST_DATA_ZERO_INIT int16_t rcInterpolationStepCount;
+    static FAST_RAM_ZERO_INIT float rcCommandInterp[4];
+    static FAST_RAM_ZERO_INIT float rcStepSize[4];
+    static FAST_RAM_ZERO_INIT int16_t rcInterpolationStepCount;
 
     uint16_t rxRefreshRate;
     uint8_t updatedChannel = 0;
@@ -390,12 +392,16 @@ uint16_t getCurrentRxRefreshRate(void)
 #ifdef USE_RC_SMOOTHING_FILTER
 // Determine a cutoff frequency based on filter type and the calculated
 // average rx frame time
-FAST_CODE_NOINLINE int calcRcSmoothingCutoff(int avgRxFrameTimeUs, uint8_t autoSmoothnessFactor)
+FAST_CODE_NOINLINE int calcRcSmoothingCutoff(int avgRxFrameTimeUs, bool pt1, uint8_t autoSmoothnessFactor)
 {
     if (avgRxFrameTimeUs > 0) {
-        const float cutoffFactor = 1.5f / (1.0f + (autoSmoothnessFactor / 10.0f));
-        float cutoff = (1 / (avgRxFrameTimeUs * 1e-6f));  // link frequency
+        const float cutoffFactor = (100 - autoSmoothnessFactor) / 100.0f;
+        float cutoff = (1 / (avgRxFrameTimeUs * 1e-6f)) / 2;  // calculate the nyquist frequency
         cutoff = cutoff * cutoffFactor;
+
+        if (pt1) {
+            cutoff = sq(cutoff) / RC_SMOOTHING_IDENTITY_FREQUENCY; // convert to a cutoff for pt1 that has similar characteristics
+        }
         return lrintf(cutoff);
     } else {
         return 0;
@@ -417,17 +423,31 @@ FAST_CODE_NOINLINE void rcSmoothingSetFilterCutoffs(rcSmoothingFilter_t *smoothi
     uint16_t oldCutoff = smoothingData->inputCutoffFrequency;
 
     if (smoothingData->inputCutoffSetting == 0) {
-        smoothingData->inputCutoffFrequency = calcRcSmoothingCutoff(smoothingData->averageFrameTimeUs, smoothingData->autoSmoothnessFactor);
+        smoothingData->inputCutoffFrequency = calcRcSmoothingCutoff(smoothingData->averageFrameTimeUs, (smoothingData->inputFilterType == RC_SMOOTHING_INPUT_PT1), smoothingData->autoSmoothnessFactor);
     }
 
     // initialize or update the input filter
     if ((smoothingData->inputCutoffFrequency != oldCutoff) || !smoothingData->filterInitialized) {
         for (int i = 0; i < PRIMARY_CHANNEL_COUNT; i++) {
             if ((1 << i) & interpolationChannels) {  // only update channels specified by rc_interp_ch
-                if (!smoothingData->filterInitialized) {
-                    ptnFilterInit((ptnFilter_t*) &smoothingData->filter[i], 3, smoothingData->inputCutoffFrequency, dT);
-                } else {
-                    ptnFilterUpdate((ptnFilter_t*) &smoothingData->filter[i], smoothingData->inputCutoffFrequency, 1.961459177f, dT);
+                switch (smoothingData->inputFilterType) {
+
+                    case RC_SMOOTHING_INPUT_PT1:
+                        if (!smoothingData->filterInitialized) {
+                            pt1FilterInit((pt1Filter_t*) &smoothingData->filter[i], pt1FilterGain(smoothingData->inputCutoffFrequency, dT));
+                        } else {
+                            pt1FilterUpdateCutoff((pt1Filter_t*) &smoothingData->filter[i], pt1FilterGain(smoothingData->inputCutoffFrequency, dT));
+                        }
+                        break;
+
+                    case RC_SMOOTHING_INPUT_BIQUAD:
+                    default:
+                        if (!smoothingData->filterInitialized) {
+                            biquadFilterInitLPF((biquadFilter_t*) &smoothingData->filter[i], smoothingData->inputCutoffFrequency, targetPidLooptime);
+                        } else {
+                            biquadFilterUpdateLPF((biquadFilter_t*) &smoothingData->filter[i], smoothingData->inputCutoffFrequency, targetPidLooptime);
+                        }
+                        break;
                 }
             }
         }
@@ -435,12 +455,15 @@ FAST_CODE_NOINLINE void rcSmoothingSetFilterCutoffs(rcSmoothingFilter_t *smoothi
 
     // update or initialize the derivative filter
     oldCutoff = smoothingData->derivativeCutoffFrequency;
-    if ((currentPidProfile->ff_interpolate_sp != FF_INTERPOLATE_OFF) && (rcSmoothingData.derivativeCutoffSetting == 0)) {
-        smoothingData->derivativeCutoffFrequency = calcRcSmoothingCutoff(smoothingData->averageFrameTimeUs, smoothingData->autoSmoothnessFactor);
+    if ((rcSmoothingData.derivativeFilterType != RC_SMOOTHING_DERIVATIVE_OFF)
+        && (currentPidProfile->ff_interpolate_sp == FF_INTERPOLATE_OFF)
+        && (rcSmoothingData.derivativeCutoffSetting == 0)) {
+
+        smoothingData->derivativeCutoffFrequency = calcRcSmoothingCutoff(smoothingData->averageFrameTimeUs, (smoothingData->derivativeFilterType == RC_SMOOTHING_DERIVATIVE_PT1), smoothingData->autoSmoothnessFactor);
     }
 
     if (!smoothingData->filterInitialized) {
-        pidInitSetpointDerivativeLpf(smoothingData->derivativeCutoffFrequency, smoothingData->debugAxis);
+        pidInitSetpointDerivativeLpf(smoothingData->derivativeCutoffFrequency, smoothingData->debugAxis, smoothingData->derivativeFilterType);
     } else if (smoothingData->derivativeCutoffFrequency != oldCutoff) {
         pidUpdateSetpointDerivativeLpf(smoothingData->derivativeCutoffFrequency);
     }
@@ -479,7 +502,14 @@ static FAST_CODE bool rcSmoothingAccumulateSample(rcSmoothingFilter_t *smoothing
 FAST_CODE_NOINLINE bool rcSmoothingAutoCalculate(void)
 {
     // if the input cutoff is 0 (auto) then we need to calculate cutoffs
-    if ((rcSmoothingData.inputCutoffSetting == 0) || (rcSmoothingData.derivativeCutoffSetting == 0)) {
+    if (rcSmoothingData.inputCutoffSetting == 0) {
+        return true;
+    }
+
+    // if the derivative type isn't OFF, and the cutoff is 0, and interpolated feedforward is not enabled then we need to calculate
+    if ((rcSmoothingData.derivativeFilterType != RC_SMOOTHING_DERIVATIVE_OFF)
+        && (currentPidProfile->ff_interpolate_sp == FF_INTERPOLATE_OFF)
+        && (rcSmoothingData.derivativeCutoffSetting == 0)) {
         return true;
     }
     return false;
@@ -488,9 +518,10 @@ FAST_CODE_NOINLINE bool rcSmoothingAutoCalculate(void)
 static FAST_CODE uint8_t processRcSmoothingFilter(void)
 {
     uint8_t updatedChannel = 0;
-    static FAST_DATA_ZERO_INIT bool initialized;
-    static FAST_DATA_ZERO_INIT timeMs_t validRxFrameTimeMs;
-    static FAST_DATA_ZERO_INIT bool calculateCutoffs;
+    static FAST_RAM_ZERO_INIT float lastRxData[4];
+    static FAST_RAM_ZERO_INIT bool initialized;
+    static FAST_RAM_ZERO_INIT timeMs_t validRxFrameTimeMs;
+    static FAST_RAM_ZERO_INIT bool calculateCutoffs;
 
     // first call initialization
     if (!initialized) {
@@ -499,19 +530,39 @@ static FAST_CODE uint8_t processRcSmoothingFilter(void)
         rcSmoothingData.averageFrameTimeUs = 0;
         rcSmoothingData.autoSmoothnessFactor = rxConfig()->rc_smoothing_auto_factor;
         rcSmoothingData.debugAxis = rxConfig()->rc_smoothing_debug_axis;
+        rcSmoothingData.inputFilterType = rxConfig()->rc_smoothing_input_type;
         rcSmoothingData.inputCutoffSetting = rxConfig()->rc_smoothing_input_cutoff;
+
+        rcSmoothingData.derivativeFilterTypeSetting = rxConfig()->rc_smoothing_derivative_type;
+        if (rxConfig()->rc_smoothing_derivative_type == RC_SMOOTHING_DERIVATIVE_AUTO) {
+            // for derivative filter type "AUTO" set to BIQUAD for classic FF and PT1 for interpolated FF
+            if (currentPidProfile->ff_interpolate_sp == FF_INTERPOLATE_OFF) {
+                rcSmoothingData.derivativeFilterType = RC_SMOOTHING_DERIVATIVE_BIQUAD;
+            } else {
+                rcSmoothingData.derivativeFilterType = RC_SMOOTHING_DERIVATIVE_PT1;
+            }
+        } else {
+            rcSmoothingData.derivativeFilterType = rxConfig()->rc_smoothing_derivative_type;
+        }
+
         rcSmoothingData.derivativeCutoffSetting = rxConfig()->rc_smoothing_derivative_cutoff;
         rcSmoothingResetAccumulation(&rcSmoothingData);
 
         rcSmoothingData.inputCutoffFrequency = rcSmoothingData.inputCutoffSetting;
 
-        if ((currentPidProfile->ff_interpolate_sp != FF_INTERPOLATE_OFF) && (rcSmoothingData.derivativeCutoffSetting == 0)) {
-            // calculate the initial derivative cutoff used for interpolated feedforward until RC interval is known
-            const float cutoffFactor = 1.5f / (1.0f + (rcSmoothingData.autoSmoothnessFactor / 10.0f));
-            float derivativeCutoff = RC_SMOOTHING_INTERPOLATED_FEEDFORWARD_INITIAL_HZ * cutoffFactor;  // PT1 cutoff frequency
-            rcSmoothingData.derivativeCutoffFrequency = lrintf(derivativeCutoff);
-        } else {
-            rcSmoothingData.derivativeCutoffFrequency = rcSmoothingData.derivativeCutoffSetting;
+        if (rcSmoothingData.derivativeFilterType != RC_SMOOTHING_DERIVATIVE_OFF) {
+            if ((currentPidProfile->ff_interpolate_sp != FF_INTERPOLATE_OFF) && (rcSmoothingData.derivativeCutoffSetting == 0)) {
+                // calculate the fixed derivative cutoff used for interpolated feedforward
+                const float cutoffFactor = (100 - rcSmoothingData.autoSmoothnessFactor) / 100.0f;
+                float derivativeCutoff = RC_SMOOTHING_INTERPOLATED_FEEDFORWARD_DERIVATIVE_PT1_HZ * cutoffFactor;  // PT1 cutoff frequency
+                if (rcSmoothingData.derivativeFilterType == RC_SMOOTHING_DERIVATIVE_BIQUAD) {
+                    // convert to an equivalent BIQUAD cutoff
+                    derivativeCutoff = sqrt(derivativeCutoff * RC_SMOOTHING_IDENTITY_FREQUENCY);
+                }
+                rcSmoothingData.derivativeCutoffFrequency = lrintf(derivativeCutoff);
+            } else {
+                rcSmoothingData.derivativeCutoffFrequency = rcSmoothingData.derivativeCutoffSetting;
+            }
         }
 
         calculateCutoffs = rcSmoothingAutoCalculate();
@@ -524,6 +575,13 @@ static FAST_CODE uint8_t processRcSmoothingFilter(void)
     }
 
     if (isRxDataNew) {
+
+        // store the new raw channel values
+        for (int i = 0; i < PRIMARY_CHANNEL_COUNT; i++) {
+            if ((1 << i) & interpolationChannels) {
+                lastRxData[i] = rcCommand[i];
+            }
+        }
 
         // for dynamically calculated filters we need to examine each rx frame interval
         if (calculateCutoffs) {
@@ -589,7 +647,7 @@ static FAST_CODE uint8_t processRcSmoothingFilter(void)
     if (rcSmoothingData.filterInitialized && (debugMode == DEBUG_RC_SMOOTHING)) {
         // after training has completed then log the raw rc channel and the calculated
         // average rx frame rate that was used to calculate the automatic filter cutoffs
-        DEBUG_SET(DEBUG_RC_SMOOTHING, 0, lrintf(last_predicted_rc[rcSmoothingData.debugAxis]));
+        DEBUG_SET(DEBUG_RC_SMOOTHING, 0, lrintf(lastRxData[rcSmoothingData.debugAxis]));
         DEBUG_SET(DEBUG_RC_SMOOTHING, 3, rcSmoothingData.averageFrameTimeUs);
     }
 
@@ -597,10 +655,19 @@ static FAST_CODE uint8_t processRcSmoothingFilter(void)
     for (updatedChannel = 0; updatedChannel < PRIMARY_CHANNEL_COUNT; updatedChannel++) {
         if ((1 << updatedChannel) & interpolationChannels) {  // only smooth selected channels base on the rc_interp_ch value
             if (rcSmoothingData.filterInitialized) {
-                rcCommand[updatedChannel] = ptnFilterApply((ptnFilter_t*) &rcSmoothingData.filter[updatedChannel], last_predicted_rc[updatedChannel]);
+                switch (rcSmoothingData.inputFilterType) {
+                    case RC_SMOOTHING_INPUT_PT1:
+                        rcCommand[updatedChannel] = pt1FilterApply((pt1Filter_t*) &rcSmoothingData.filter[updatedChannel], lastRxData[updatedChannel]);
+                        break;
+
+                    case RC_SMOOTHING_INPUT_BIQUAD:
+                    default:
+                        rcCommand[updatedChannel] = biquadFilterApplyDF1((biquadFilter_t*) &rcSmoothingData.filter[updatedChannel], lastRxData[updatedChannel]);
+                        break;
+                }
             } else {
                 // If filter isn't initialized yet then use the actual unsmoothed rx channel data
-                rcCommand[updatedChannel] = last_predicted_rc[updatedChannel];
+                rcCommand[updatedChannel] = lastRxData[updatedChannel];
             }
         }
     }
@@ -609,85 +676,21 @@ static FAST_CODE uint8_t processRcSmoothingFilter(void)
 }
 #endif // USE_RC_SMOOTHING_FILTER
 
-#ifdef USE_RC_PREDICTOR
-static FAST_CODE void rcPrediction(timeUs_t currentTimeUs) {
-
-    static FAST_DATA_ZERO_INIT float rc_velocity[4];
-    static FAST_DATA_ZERO_INIT float smoothed_rc_velocity[4];
-    static FAST_DATA_ZERO_INIT float last_good_rc[4];
-    static FAST_DATA_ZERO_INIT timeUs_t last_good_rc_time;
-    static FAST_DATA_ZERO_INIT bool predictorInitialized;
-    const float dT = targetPidLooptime * 1e-6f;
-
-  if (rxConfig()->predictive_rc_time) {
-
-    if (!predictorInitialized) {
-        predictorInitialized = true;
-        rcSmoothingData.predictorPercent = rxConfig()->predictive_rc_percent / 100.0f;
-        rcSmoothingData.predictorTime = rxConfig()->predictive_rc_time * 1000.0f;
-        for (int i = 0; i < PRIMARY_CHANNEL_COUNT; i++) {
-            pt1FilterInit(&rcSmoothingData.velocityLpf[i], pt1FilterGain(rxConfig()->predictive_rc_cutoff, dT));
-        }
-    }
-
-    if (isRxDataNew && (rcCommand[0] != last_good_rc[0] || rcCommand[1] != last_good_rc[1] || rcCommand[2] != last_good_rc[2] || rcCommand[3] != last_good_rc[3])) {
-        for (int i = 0; i < PRIMARY_CHANNEL_COUNT; ++i) {
-            rc_velocity[i] = (rcCommand[i] - last_good_rc[i]) / (currentTimeUs - last_good_rc_time); // rc_velocity is in rc/us
-            last_good_rc[i] = rcCommand[i];
-            DEBUG_SET(DEBUG_RC_PREDICTOR, 0, rcCommand[rcSmoothingData.debugAxis]);
-        }
-        last_good_rc_time = currentTimeUs;
-    }
-
-    if (currentTimeUs <= last_good_rc_time + rcSmoothingData.predictorTime) // Stop predicting after 100ms of no new rc
-    {
-      for (int i = 0; i < PRIMARY_CHANNEL_COUNT; ++i) {
-        // filter the stick velocity
-        smoothed_rc_velocity[i] = pt1FilterApply(&rcSmoothingData.velocityLpf[i], rc_velocity[i]);
-        // deal with changing directions better.
-        if (smoothed_rc_velocity[i] * rc_velocity[i] < 0.0f) {
-            smoothed_rc_velocity[i] = 0.0f;
-        }
-        DEBUG_SET(DEBUG_RC_PREDICTOR, 2, rc_velocity[rcSmoothingData.debugAxis] * 10000);
-        DEBUG_SET(DEBUG_RC_PREDICTOR, 3, smoothed_rc_velocity[rcSmoothingData.debugAxis] * 10000);
-        // Check for sane stick velocity
-        if (fabsf(smoothed_rc_velocity[i]) < 0.01f) { // v < 20.0/sec i.e. 0.05 sec from 0.0 to 500.0f
-          rcCommand[i] = last_good_rc[i] + smoothed_rc_velocity[i] * (currentTimeUs - last_good_rc_time) * rcSmoothingData.predictorPercent;
-          if (last_good_rc[i] * rcCommand[i] < 0.0f) {
-            rcCommand[i] = 0.0f;
-          } else if (i != THROTTLE) {
-            rcCommand[i] = constrainf(rcCommand[i], -500.0f, 500.0f);
-          } else {
-            rcCommand[i] = constrainf(rcCommand[i], 1000.0f, 2000.0f);
-          }
-        last_predicted_rc[i] = rcCommand[i];
-        }
-      }
-      DEBUG_SET(DEBUG_RC_PREDICTOR, 1, rcCommand[rcSmoothingData.debugAxis]);
-    }
-  }
-}
-#endif // USE_RC_PREDICTOR
-
-FAST_CODE void processRcCommand(timeUs_t currentTimeUs)
+FAST_CODE void processRcCommand(void)
 {
     uint8_t updatedChannel;
+
     if (isRxDataNew) {
-        newRxDataForFF = true;
+        rcFrameNumber++;
     }
 
     if (isRxDataNew && pidAntiGravityEnabled()) {
         checkForThrottleErrorResetState(currentRxRefreshRate);
     }
 
-#ifdef USE_RC_PREDICTOR
-    rcPrediction(currentTimeUs);
-#endif // USE_RC_PREDICTOR
-
 #ifdef USE_INTERPOLATED_SP
     if (isRxDataNew) {
         for (int i = FD_ROLL; i <= FD_YAW; i++) {
-            rcCommandDelta[i] = fabsf(rcCommand[i] - oldRcCommand[i]);
             oldRcCommand[i] = rcCommand[i];
             float rcCommandf;
             if (i == FD_YAW) {
@@ -697,6 +700,7 @@ FAST_CODE void processRcCommand(timeUs_t currentTimeUs)
             }
             const float rcCommandfAbs = fabsf(rcCommandf);
             rawSetpoint[i] = applyRates(i, rcCommandf, rcCommandfAbs);
+            rawDeflection[i] = rcCommandf;
         }
     }
 #endif
@@ -737,57 +741,28 @@ FAST_CODE void processRcCommand(timeUs_t currentTimeUs)
     isRxDataNew = false;
 }
 
-static void applyRollYawMix(void) {
-    float rollAddition, yawAddition, unchangedRoll;
-
-    unchangedRoll = rcCommand[FD_ROLL];
-    yawAddition = rcCommand[FD_YAW] * (currentControlRateProfile->addYawToRollRc / 100.0f) * -GET_DIRECTION(rcControlsConfig()->yaw_control_reversed);
-    rcCommand[FD_ROLL] = constrainf((rcCommand[FD_ROLL] + yawAddition), -500.0f, 500.0f);
-
-    rollAddition = unchangedRoll * (currentControlRateProfile->addRollToYawRc / 100.0f) * -GET_DIRECTION(rcControlsConfig()->yaw_control_reversed);
-    rcCommand[FD_YAW] = constrainf((rcCommand[FD_YAW] + rollAddition), -500.0f, 500.0f);
-}
-
-static void applyPolarExpo(void) {
-    const float roll_pitch_mag = fast_fsqrtf((rcCommand[FD_ROLL] * rcCommand[FD_ROLL] / 250000.0f) + (rcCommand[FD_PITCH] * rcCommand[FD_PITCH] / 250000.0f));
-
-    float roll_pitch_scale;
-    const float rollPitchMagExpo = currentControlRateProfile->rollPitchMagExpo / 100.0f;
-    if (roll_pitch_mag > 1.0f) {
-        roll_pitch_scale = (1.0f / roll_pitch_mag);
-        roll_pitch_scale = ((roll_pitch_scale - 1.0f) * rollPitchMagExpo) + 1.0f;
-    } else {
-        roll_pitch_scale = 1.0f;
-    }
-
-    rcCommand[FD_ROLL] *= roll_pitch_scale;
-    rcCommand[FD_PITCH] *= roll_pitch_scale;
-}
-
 FAST_CODE_NOINLINE void updateRcCommands(void)
 {
     isRxDataNew = true;
 
     // PITCH & ROLL only dynamic PID adjustment,  depending on throttle value
-    int32_t propP, propI, propD;
-    if (rcData[THROTTLE] < pidRuntime.tpaBreakpoint) {
-        throttlePAttenuation = 1.0f;
-        throttleIAttenuation = 1.0f;
-        throttleDAttenuation = 1.0f;
+    int32_t prop;
+    if (rcData[THROTTLE] < currentControlRateProfile->tpa_breakpoint) {
+        prop = 100;
+        throttlePIDAttenuation = 1.0f;
     } else {
-        float tpaMultiplier = (rcData[THROTTLE] - pidRuntime.tpaBreakpoint) / (2000 - pidRuntime.tpaBreakpoint);
-        propP = 100 + ((uint16_t)pidRuntime.dynThr[0] - 100) * tpaMultiplier;
-        propI = 100 + ((uint16_t)pidRuntime.dynThr[1] - 100) * tpaMultiplier;
-        propD = 100 + ((uint16_t)pidRuntime.dynThr[2] - 100) * tpaMultiplier;
-        throttlePAttenuation = propP / 100.0f;
-        throttleIAttenuation = propI / 100.0f;
-        throttleDAttenuation = propD / 100.0f;
+        if (rcData[THROTTLE] < 2000) {
+            prop = 100 - (uint16_t)currentControlRateProfile->dynThrPID * (rcData[THROTTLE] - currentControlRateProfile->tpa_breakpoint) / (2000 - currentControlRateProfile->tpa_breakpoint);
+        } else {
+            prop = 100 - currentControlRateProfile->dynThrPID;
+        }
+        throttlePIDAttenuation = prop / 100.0f;
     }
 
     for (int axis = 0; axis < 3; axis++) {
         // non coupled PID reduction scaler used in PID controller 1 and PID controller 2.
 
-        float tmp = MIN(ABS(rcData[axis] - rxConfig()->midrc), 500);
+        int32_t tmp = MIN(ABS(rcData[axis] - rxConfig()->midrc), 500);
         if (axis == ROLL || axis == PITCH) {
             if (tmp > rcControlsConfig()->deadband) {
                 tmp -= rcControlsConfig()->deadband;
@@ -805,20 +780,6 @@ FAST_CODE_NOINLINE void updateRcCommands(void)
         }
         if (rcData[axis] < rxConfig()->midrc) {
             rcCommand[axis] = -rcCommand[axis];
-        }
-      rcCommand[axis] = rateDynamics(rcCommand[axis], axis, currentRxRefreshRate);
-    }
-
-    applyPolarExpo();
-    applyRollYawMix();
-
-    if (rxConfig()->showAlteredRc != 0) {
-        for (int axis = 0; axis < 3; axis++) {
-            if (axis == ROLL || axis == PITCH) {
-                rcData[axis] = rcCommand[axis] + rxConfig()->midrc;
-            } else {
-                rcData[axis] = (rcCommand[axis] * -GET_DIRECTION(rcControlsConfig()->yaw_control_reversed)) + rxConfig()->midrc;
-            }
         }
     }
 
@@ -860,7 +821,7 @@ FAST_CODE_NOINLINE void updateRcCommands(void)
 
         rcCommandBuff.X = rcCommand[ROLL];
         rcCommandBuff.Y = rcCommand[PITCH];
-        if ((!FLIGHT_MODE(ANGLE_MODE) && (!FLIGHT_MODE(HORIZON_MODE)) && (!FLIGHT_MODE(NFE_RACE_MODE)) && (!FLIGHT_MODE(GPS_RESCUE_MODE)))) {
+        if ((!FLIGHT_MODE(ANGLE_MODE) && (!FLIGHT_MODE(HORIZON_MODE)) && (!FLIGHT_MODE(GPS_RESCUE_MODE)))) {
             rcCommandBuff.Z = rcCommand[YAW];
         } else {
             rcCommandBuff.Z = 0;
@@ -868,7 +829,7 @@ FAST_CODE_NOINLINE void updateRcCommands(void)
         imuQuaternionHeadfreeTransformVectorEarthToBody(&rcCommandBuff);
         rcCommand[ROLL] = rcCommandBuff.X;
         rcCommand[PITCH] = rcCommandBuff.Y;
-        if ((!FLIGHT_MODE(ANGLE_MODE) && (!FLIGHT_MODE(HORIZON_MODE)) && (!FLIGHT_MODE(NFE_RACE_MODE)) && (!FLIGHT_MODE(GPS_RESCUE_MODE)))) {
+        if ((!FLIGHT_MODE(ANGLE_MODE)&&(!FLIGHT_MODE(HORIZON_MODE)) && (!FLIGHT_MODE(GPS_RESCUE_MODE)))) {
             rcCommand[YAW] = rcCommandBuff.Z;
         }
     }
@@ -917,6 +878,10 @@ void initRcProcessing(void)
         break;
     case RATES_TYPE_ACTUAL:
         applyRates = applyActualRates;
+
+        break;
+    case RATES_TYPE_QUICK:
+        applyRates = applyQuickRates;
 
         break;
     }
@@ -970,55 +935,3 @@ bool rcSmoothingInitializationComplete(void) {
     return (rxConfig()->rc_smoothing_type != RC_SMOOTHING_TYPE_FILTER) || rcSmoothingData.filterInitialized;
 }
 #endif // USE_RC_SMOOTHING_FILTER
-
-FAST_CODE float calculateK(float k, int time) {
-    if (k == 0.0f) {
-        return 0;
-    }
-    // scale so it feels like running at 62.5hz (16ms) regardless of the current rx rate
-    const float dT = time * 1e-6f;
-    const float rxRate = 1.0f / dT;
-    const float rxRateFactor = (rxRate / 62.5f) * rxRate;
-    const float freq = k / ((1.0f / rxRateFactor) * (1.0f - k));
-    const float RC = 1.0f / freq;
-
-    return dT / (RC + dT);
-}
-
-FAST_CODE float rateDynamics(float rcCommand, int axis, int currentRxRefreshRate)
-{
-  static FAST_DATA_ZERO_INIT float lastRcCommandData[3];
-  static FAST_DATA_ZERO_INIT float iterm[3];
-
-  if (((currentControlRateProfile->rateDynamics.rateSensCenter != 100) || (currentControlRateProfile->rateDynamics.rateSensEnd != 100))
-  || ((currentControlRateProfile->rateDynamics.rateWeightCenter > 0) || (currentControlRateProfile->rateDynamics.rateWeightEnd > 0)))
-  {
-    float pterm_centerStick, pterm_endStick, pterm, iterm_centerStick, iterm_endStick, dterm_centerStick, dterm_endStick, dterm;
-    float rcCommandPercent;
-    float rcCommandError;
-    float rcCommandChange;
-    float inverseRcCommandPercent;
-    rcCommandPercent = fabsf(rcCommand) / 500.0f; // make rcCommandPercent go from 0 to 1
-    inverseRcCommandPercent = 1.0f - rcCommandPercent;
-
-    pterm_centerStick = inverseRcCommandPercent * rcCommand * (currentControlRateProfile->rateDynamics.rateSensCenter / 100.0f); // valid pterm values are between 50-150
-    pterm_endStick = rcCommandPercent * rcCommand * (currentControlRateProfile->rateDynamics.rateSensEnd / 100.0f);
-    pterm = pterm_centerStick + pterm_endStick;
-    rcCommandError = rcCommand - (pterm + iterm[axis]);
-    rcCommand = pterm; // add this fake pterm to the rcCommand
-
-    iterm_centerStick = inverseRcCommandPercent * rcCommandError * calculateK(currentControlRateProfile->rateDynamics.rateCorrectionCenter / 100.0f, currentRxRefreshRate); // valid iterm values are between 0-95
-    iterm_endStick = rcCommandPercent * rcCommandError * calculateK(currentControlRateProfile->rateDynamics.rateCorrectionEnd / 100.0f, currentRxRefreshRate);
-    iterm[axis] += iterm_centerStick + iterm_endStick;
-    rcCommand = rcCommand + iterm[axis]; // add the iterm to the rcCommand
-
-    rcCommandChange = lastRcCommandData[axis] - rcCommand;
-    dterm_centerStick = inverseRcCommandPercent * rcCommandChange * calculateK(currentControlRateProfile->rateDynamics.rateWeightCenter / 100.0f, currentRxRefreshRate); // valid dterm values are between 0-95
-    dterm_endStick = rcCommandPercent * rcCommandChange * calculateK(currentControlRateProfile->rateDynamics.rateWeightEnd / 100.0f, currentRxRefreshRate);
-    dterm = dterm_centerStick + dterm_endStick;
-
-    rcCommand = rcCommand + dterm; // add dterm to the rcCommand (this is real dterm)
-    lastRcCommandData[axis] = rcCommand;
-  }
-    return rcCommand;
-}

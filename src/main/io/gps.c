@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -509,7 +509,7 @@ void gpsInitUblox(void)
                             tx_buffer.payload.sbas.scanmode2 = 0;
                             switch (gpsConfig()->sbasMode) {
                                 case SBAS_AUTO:
-                                    tx_buffer.payload.sbas.scanmode1 = 0;
+                                    tx_buffer.payload.sbas.scanmode1 = 0; 
                                     break;
                                 case SBAS_EGNOS:
                                     tx_buffer.payload.sbas.scanmode1 = 0x00010048; //PRN123, PRN126, PRN136
@@ -524,7 +524,7 @@ void gpsInitUblox(void)
                                     tx_buffer.payload.sbas.scanmode1 = 0x00001180; //PRN127, PRN128, PRN132
                                     break;
                                 default:
-                                    tx_buffer.payload.sbas.scanmode1 = 0;
+                                    tx_buffer.payload.sbas.scanmode1 = 0; 
                                     break;
                             }
                             ubloxSendConfigMessage((const uint8_t *) &tx_buffer, UBLOX_SBAS_MESSAGE_LENGTH);
@@ -613,7 +613,7 @@ void gpsInitUblox(void)
                             tx_buffer.payload.gnss.configblocks[6].maxTrkCh = 14; //max channels
                             tx_buffer.payload.gnss.configblocks[6].reserved1 = 0;
                             tx_buffer.payload.gnss.configblocks[6].flags = UBLOX_GNSS_ENABLE | UBLOX_GNSS_DEFAULT_SIGCFGMASK | 0x01000000; //last number is undocumented and was captured from uCenter
-
+                            
                             ubloxSendConfigMessage((const uint8_t *) &tx_buffer, UBLOX_GNSS_MESSAGE_LENGTH);
                         }
                         break;
@@ -950,7 +950,11 @@ static bool gpsNewFrameNMEA(char c)
                                 gps_Msg.longitude *= -1;
                             break;
                         case 6:
-                            gpsSetFixState(string[0] > '0');
+                            if (string[0] > '0') {
+                                ENABLE_STATE(GPS_FIX);
+                            } else {
+                                DISABLE_STATE(GPS_FIX);
+                            }
                             break;
                         case 7:
                             gps_Msg.numSat = grab_fields(string, 0);
@@ -1164,7 +1168,7 @@ typedef struct {
 } ubx_nav_svinfo;
 
 typedef struct {
-    uint8_t clsId;               // Class ID of the acknowledged message
+    uint8_t clsId;               // Class ID of the acknowledged message 
     uint8_t msgId;               // Message ID of the acknowledged message
 } ubx_ack;
 
@@ -1273,7 +1277,11 @@ static bool UBLOX_parse_gps(void)
         gpsSol.llh.lon = _buffer.posllh.longitude;
         gpsSol.llh.lat = _buffer.posllh.latitude;
         gpsSol.llh.altCm = _buffer.posllh.altitudeMslMm / 10;  //alt in cm
-        gpsSetFixState(next_fix);
+        if (next_fix) {
+            ENABLE_STATE(GPS_FIX);
+        } else {
+            DISABLE_STATE(GPS_FIX);
+        }
         _new_position = true;
         break;
     case MSG_STATUS:
@@ -1491,9 +1499,9 @@ static void GPS_calculateDistanceFlownVerticalSpeed(bool initialize)
             if (speed > GPS_DISTANCE_FLOWN_MIN_SPEED_THRESHOLD_CM_S) {
                 uint32_t dist;
                 int32_t dir;
-                GPS_distance_cm_bearing(&gpsSol.llh.lat, &gpsSol.llh.lon, &lastCoord[GPS_LATITUDE], &lastCoord[GPS_LONGITUDE], &dist, &dir);
+                GPS_distance_cm_bearing(&gpsSol.llh.lat, &gpsSol.llh.lon, &lastCoord[LAT], &lastCoord[LON], &dist, &dir);
                 if (gpsConfig()->gps_use_3d_speed) {
-                    dist = fast_fsqrtf(powf(gpsSol.llh.altCm - lastAlt, 2.0f) + powf(dist, 2.0f));
+                    dist = sqrtf(powf(gpsSol.llh.altCm - lastAlt, 2.0f) + powf(dist, 2.0f));
                 }
                 GPS_distanceFlownInCm += dist;
             }
@@ -1501,8 +1509,8 @@ static void GPS_calculateDistanceFlownVerticalSpeed(bool initialize)
         GPS_verticalSpeedInCmS = (gpsSol.llh.altCm - lastAlt) * 1000 / (currentMillis - lastMillis);
         GPS_verticalSpeedInCmS = constrain(GPS_verticalSpeedInCmS, -1500, 1500);
     }
-    lastCoord[GPS_LONGITUDE] = gpsSol.llh.lon;
-    lastCoord[GPS_LATITUDE] = gpsSol.llh.lat;
+    lastCoord[LON] = gpsSol.llh.lon;
+    lastCoord[LAT] = gpsSol.llh.lat;
     lastAlt = gpsSol.llh.altCm;
     lastMillis = currentMillis;
 }
@@ -1511,8 +1519,8 @@ void GPS_reset_home_position(void)
 {
     if (!STATE(GPS_FIX_HOME) || !gpsConfig()->gps_set_home_point_once) {
         if (STATE(GPS_FIX) && gpsSol.numSat >= 5) {
-            GPS_home[GPS_LATITUDE] = gpsSol.llh.lat;
-            GPS_home[GPS_LONGITUDE] = gpsSol.llh.lon;
+            GPS_home[LAT] = gpsSol.llh.lat;
+            GPS_home[LON] = gpsSol.llh.lon;
             GPS_calc_longitude_scaling(gpsSol.llh.lat); // need an initial value for distance and bearing calc
             // Set ground altitude
             ENABLE_STATE(GPS_FIX_HOME);
@@ -1530,7 +1538,7 @@ void GPS_distance_cm_bearing(int32_t *currentLat1, int32_t *currentLon1, int32_t
 {
     float dLat = *destinationLat2 - *currentLat1; // difference of latitude in 1/10 000 000 degrees
     float dLon = (float)(*destinationLon2 - *currentLon1) * GPS_scaleLonDown;
-    *dist = fast_fsqrtf(sq(dLat) + sq(dLon)) * DISTANCE_BETWEEN_TWO_LONGITUDE_POINTS_AT_EQUATOR_IN_HUNDREDS_OF_KILOMETERS;
+    *dist = sqrtf(sq(dLat) + sq(dLon)) * DISTANCE_BETWEEN_TWO_LONGITUDE_POINTS_AT_EQUATOR_IN_HUNDREDS_OF_KILOMETERS;
 
     *bearing = 9000.0f + atan2_approx(-dLat, dLon) * TAN_89_99_DEGREES;      // Convert the output radians to 100xdeg
     if (*bearing < 0)
@@ -1542,7 +1550,7 @@ void GPS_calculateDistanceAndDirectionToHome(void)
     if (STATE(GPS_FIX_HOME)) {      // If we don't have home set, do not display anything
         uint32_t dist;
         int32_t dir;
-        GPS_distance_cm_bearing(&gpsSol.llh.lat, &gpsSol.llh.lon, &GPS_home[GPS_LATITUDE], &GPS_home[GPS_LONGITUDE], &dist, &dir);
+        GPS_distance_cm_bearing(&gpsSol.llh.lat, &gpsSol.llh.lon, &GPS_home[LAT], &GPS_home[LON], &dist, &dir);
         GPS_distanceToHome = dist / 100;
         GPS_directionToHome = dir / 100;
     } else {
@@ -1577,13 +1585,4 @@ void onGpsNewData(void)
 #endif
 }
 
-void gpsSetFixState(bool state)
-{
-    if (state) {
-        ENABLE_STATE(GPS_FIX);
-        ENABLE_STATE(GPS_FIX_EVER);
-    } else {
-        DISABLE_STATE(GPS_FIX);
-    }
-}
 #endif

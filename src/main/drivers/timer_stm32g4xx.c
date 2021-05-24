@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -74,8 +74,6 @@ const timerHardware_t fullTimerHardware[FULL_TIMER_CHANNEL_COUNT] = {
 
     DEF_TIM(TIM8, CH1N, PA7, TIM_USE_ANY, 0, 0, 0),
 
-    DEF_TIM(TIM8, CH2, PA14, TIM_USE_ANY, 0, 0, 0),
-    
     DEF_TIM(TIM1, CH1N, PA7, TIM_USE_ANY, 0, 0, 0),
     DEF_TIM(TIM1, CH1, PA8, TIM_USE_ANY, 0, 0, 0),
     DEF_TIM(TIM1, CH2, PA9, TIM_USE_ANY, 0, 0, 0),
@@ -126,11 +124,9 @@ const timerHardware_t fullTimerHardware[FULL_TIMER_CHANNEL_COUNT] = {
     DEF_TIM(TIM8, CH1N, PB3, TIM_USE_ANY, 0, 0, 0),
     DEF_TIM(TIM8, CH2N, PB4, TIM_USE_ANY, 0, 0, 0),
     DEF_TIM(TIM1, CH3N, PB15, TIM_USE_ANY, 0, 0, 0),
-    
-    DEF_TIM(TIM8, CH1, PB6, TIM_USE_ANY, 0, 0, 0),
 
     DEF_TIM(TIM1, CH2N, PB0, TIM_USE_ANY, 0, 0, 0),
-    DEF_TIM(TIM1, CH3N, PB1, TIM_USE_ANY, 0, 0, 0),
+    DEF_TIM(TIM1, CH3N, PB0, TIM_USE_ANY, 0, 0, 0),
     DEF_TIM(TIM1, CH1N, PB13, TIM_USE_ANY, 0, 0, 0),
     DEF_TIM(TIM1, CH2N, PB14, TIM_USE_ANY, 0, 0, 0),
 

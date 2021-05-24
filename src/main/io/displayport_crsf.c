@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -31,10 +31,14 @@
 #include "common/printf.h"
 #include "common/time.h"
 
+#include "config/feature.h"
+
 #include "drivers/display.h"
 #include "drivers/time.h"
 
-#include "displayport_crsf.h"
+#include "io/displayport_crsf.h"
+
+#include "rx/rx.h"
 
 #define CRSF_DISPLAY_PORT_OPEN_DELAY_MS     400
 #define CRSF_DISPLAY_PORT_CLEAR_DELAY_MS    45
@@ -53,7 +57,7 @@ static int crsfClearScreen(displayPort_t *displayPort)
 {
     UNUSED(displayPort);
     memset(crsfScreen.buffer, ' ', sizeof(crsfScreen.buffer));
-    crsfScreen.updated = false;
+    memset(crsfScreen.pendingTransport, 0, sizeof(crsfScreen.pendingTransport));
     crsfScreen.reset = true;
     delayTransportUntilMs = millis() + CRSF_DISPLAY_PORT_CLEAR_DELAY_MS;
     return 0;
@@ -86,8 +90,8 @@ static int crsfWriteString(displayPort_t *displayPort, uint8_t col, uint8_t row,
     }
     const size_t truncLen = MIN((int)strlen(s), crsfScreen.cols-col);  // truncate at colCount
     char *rowStart = &crsfScreen.buffer[row * crsfScreen.cols + col];
-    crsfScreen.updated |= memcmp(rowStart, s, truncLen);
-    if (crsfScreen.updated) {
+    crsfScreen.pendingTransport[row] = memcmp(rowStart, s, truncLen);
+    if (crsfScreen.pendingTransport[row]) {
         memcpy(rowStart, s, truncLen);
     }
     return 0;
@@ -118,7 +122,7 @@ static int crsfHeartbeat(displayPort_t *displayPort)
     return 0;
 }
 
-static void crsfRedraw(displayPort_t *displayPort)
+static void crsfResync(displayPort_t *displayPort)
 {
     displayPort->rows = crsfScreen.rows;
     displayPort->cols = crsfScreen.cols;
@@ -140,7 +144,7 @@ static const displayPortVTable_t crsfDisplayPortVTable = {
     .writeChar = crsfWriteChar,
     .isTransferInProgress = crsfIsTransferInProgress,
     .heartbeat = crsfHeartbeat,
-    .redraw = crsfRedraw,
+    .resync = crsfResync,
     .isSynced = crsfIsSynced,
     .txBytesFree = crsfTxBytesFree,
     .layerSupported = NULL,
@@ -177,7 +181,7 @@ void crsfDisplayPortSetDimensions(uint8_t rows, uint8_t cols)
 {
     crsfScreen.rows = MIN(rows, CRSF_DISPLAY_PORT_ROWS_MAX);
     crsfScreen.cols = MIN(cols, CRSF_DISPLAY_PORT_COLS_MAX);
-    crsfRedraw(&crsfDisplayPort);
+    crsfResync(&crsfDisplayPort);
 }
 
 void crsfDisplayPortRefresh(void)
@@ -186,29 +190,37 @@ void crsfDisplayPortRefresh(void)
         crsfDisplayPortMenuOpen();
         return;
     }
-    crsfScreen.updated = true;
+    memset(crsfScreen.pendingTransport, 1, crsfScreen.rows);
     crsfScreen.reset = true;
     delayTransportUntilMs = millis() + CRSF_DISPLAY_PORT_CLEAR_DELAY_MS;
 }
 
-bool crsfDisplayPortIsReady(void)
+int crsfDisplayPortNextRow(void)
 {
     const timeMs_t currentTimeMs = millis();
-    const bool delayExpired = (currentTimeMs > delayTransportUntilMs);
-    const bool cmsReady = (cmsInMenu && (pCurrentDisplay == &crsfDisplayPort));
-    return (bool)(delayExpired && cmsReady);
+    if (currentTimeMs < delayTransportUntilMs) {
+        return -1;
+    }
+    for(unsigned int i=0; i<CRSF_DISPLAY_PORT_ROWS_MAX; i++) {
+        if (crsfScreen.pendingTransport[i]) {
+            return i;
+        }
+    }
+    return -1;
 }
 
-static displayPort_t *displayPortCrsfInit()
+displayPort_t *displayPortCrsfInit()
 {
-    crsfDisplayPortSetDimensions(CRSF_DISPLAY_PORT_ROWS_MAX, CRSF_DISPLAY_PORT_COLS_MAX);
-    displayInit(&crsfDisplayPort, &crsfDisplayPortVTable, DISPLAYPORT_DEVICE_TYPE_CRSF);
+    if (featureIsEnabled(FEATURE_TELEMETRY)
+        && featureIsEnabled(FEATURE_RX_SERIAL)
+        && (rxConfig()->serialrx_provider == SERIALRX_CRSF)) {
 
-    return &crsfDisplayPort;
+        crsfDisplayPortSetDimensions(CRSF_DISPLAY_PORT_ROWS_MAX, CRSF_DISPLAY_PORT_COLS_MAX);
+        displayInit(&crsfDisplayPort, &crsfDisplayPortVTable);
+        return &crsfDisplayPort;
+    } else {
+        return NULL;
+    }
 }
 
-void crsfDisplayportRegister(void)
-{
-    cmsDisplayPortRegister(displayPortCrsfInit());
-}
 #endif

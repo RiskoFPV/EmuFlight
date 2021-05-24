@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -74,6 +74,7 @@
 
 #include "io/beeper.h"
 #include "io/gps.h"
+#include "io/motors.h"
 #include "io/pidaudio.h"
 #include "io/serial.h"
 #include "io/servos.h"
@@ -144,7 +145,7 @@ enum {
 int16_t magHold;
 #endif
 
-static FAST_DATA_ZERO_INIT uint8_t pidUpdateCounter;
+static FAST_RAM_ZERO_INIT uint8_t pidUpdateCounter;
 
 static bool flipOverAfterCrashActive = false;
 
@@ -231,10 +232,10 @@ static bool accNeedsCalibration(void)
         // Check for any configured modes that use the ACC
         if (isModeActivationConditionPresent(BOXANGLE) ||
             isModeActivationConditionPresent(BOXHORIZON) ||
-            isModeActivationConditionPresent(BOXNFE) ||
             isModeActivationConditionPresent(BOXGPSRESCUE) ||
             isModeActivationConditionPresent(BOXCAMSTAB) ||
-            isModeActivationConditionPresent(BOXCALIB)) {
+            isModeActivationConditionPresent(BOXCALIB) ||
+            isModeActivationConditionPresent(BOXACROTRAINER)) {
 
             return true;
         }
@@ -276,7 +277,7 @@ void updateArmingStatus(void)
             // We also need to prevent arming until it's possible to send DSHOT commands.
             // Otherwise if the initial arming is in crash-flip the motor direction commands
             // might not be sent.
-            && (!isMotorProtocolDshot() || dshotStreamingCommandsAreEnabled())
+            && (!isMotorProtocolDshot() || dshotCommandsAreEnabled(DSHOT_CMD_TYPE_INLINE))
 #endif
         ) {
             // If so, unset the grace time arming disable flag
@@ -462,13 +463,11 @@ void disarm(flightLogDisarmReason_e reason)
             dshotCommandWrite(ALL_MOTORS, getMotorCount(), DSHOT_CMD_SPIN_DIRECTION_NORMAL, DSHOT_CMD_TYPE_INLINE);
         }
 #endif
-#ifdef USE_PERSISTENT_STATS
-        if (!flipOverAfterCrashActive) {
-            statsOnDisarm();
-        }
-#endif
-
         flipOverAfterCrashActive = false;
+
+#ifdef USE_PERSISTENT_STATS
+        statsOnDisarm();
+#endif
 
         // if ARMING_DISABLED_RUNAWAY_TAKEOFF is set then we want to play it's beep pattern instead
         if (!(getArmingDisableFlags() & (ARMING_DISABLED_RUNAWAY_TAKEOFF | ARMING_DISABLED_CRASH_DETECTED))) {
@@ -540,6 +539,10 @@ void tryArm(void)
         ENABLE_ARMING_FLAG(ARMED);
 
         resetTryingToArm();
+
+#ifdef USE_ACRO_TRAINER
+        pidAcroTrainerInit();
+#endif // USE_ACRO_TRAINER
 
         if (isModeActivationConditionPresent(BOXPREARM)) {
             ENABLE_ARMING_FLAG(WAS_ARMED_WITH_PREARM);
@@ -740,6 +743,11 @@ bool isAirmodeActivated()
  */
 bool processRx(timeUs_t currentTimeUs)
 {
+    static bool armedBeeperOn = false;
+#ifdef USE_TELEMETRY
+    static bool sharedPortTelemetryEnabled = false;
+#endif
+
     timeDelta_t frameAgeUs;
     timeDelta_t frameDeltaUs = rxGetFrameDelta(&frameAgeUs);
 
@@ -882,17 +890,6 @@ bool processRx(timeUs_t currentTimeUs)
     }
 #endif
 
-    return true;
-}
-
-void processRxModes(timeUs_t currentTimeUs)
-{
-    static bool armedBeeperOn = false;
-#ifdef USE_TELEMETRY
-    static bool sharedPortTelemetryEnabled = false;
-#endif
-    const throttleStatus_e throttleStatus = calculateThrottleStatus();
-
     // When armed and motors aren't spinning, do beeps and then disarm
     // board after delay so users without buzzer won't lose fingers.
     // mixTable constrains motor commands, so checking  throttleStatus is enough
@@ -964,11 +961,11 @@ void processRxModes(timeUs_t currentTimeUs)
     }
 
     bool canUseHorizonMode = true;
-    bool canUseNFEMode = false;
+
     if ((IS_RC_MODE_ACTIVE(BOXANGLE) || failsafeIsActive()) && (sensors(SENSOR_ACC))) {
         // bumpless transfer to Level mode
         canUseHorizonMode = false;
-        canUseNFEMode = true;
+
         if (!FLIGHT_MODE(ANGLE_MODE)) {
             ENABLE_FLIGHT_MODE(ANGLE_MODE);
         }
@@ -977,7 +974,7 @@ void processRxModes(timeUs_t currentTimeUs)
     }
 
     if (IS_RC_MODE_ACTIVE(BOXHORIZON) && canUseHorizonMode) {
-        canUseNFEMode = true;
+
         DISABLE_FLIGHT_MODE(ANGLE_MODE);
 
         if (!FLIGHT_MODE(HORIZON_MODE)) {
@@ -985,15 +982,6 @@ void processRxModes(timeUs_t currentTimeUs)
         }
     } else {
         DISABLE_FLIGHT_MODE(HORIZON_MODE);
-    }
-
-    if (IS_RC_MODE_ACTIVE(BOXNFE) && canUseNFEMode) {
-
-        if (!FLIGHT_MODE(NFE_RACE_MODE)) {
-            ENABLE_FLIGHT_MODE(NFE_RACE_MODE);
-        }
-    } else {
-        DISABLE_FLIGHT_MODE(NFE_RACE_MODE);
     }
 
 #ifdef USE_GPS_RESCUE
@@ -1006,7 +994,7 @@ void processRxModes(timeUs_t currentTimeUs)
     }
 #endif
 
-    if (FLIGHT_MODE(ANGLE_MODE) || FLIGHT_MODE(HORIZON_MODE) || FLIGHT_MODE(NFE_RACE_MODE)) {
+    if (FLIGHT_MODE(ANGLE_MODE) || FLIGHT_MODE(HORIZON_MODE)) {
         LED1_ON;
         // increase frequency of attitude task to reduce drift when in angle or horizon mode
         rescheduleTask(TASK_ATTITUDE, TASK_PERIOD_HZ(500));
@@ -1082,6 +1070,10 @@ void processRxModes(timeUs_t currentTimeUs)
     }
 #endif
 
+#ifdef USE_ACRO_TRAINER
+    pidSetAcroTrainerState(IS_RC_MODE_ACTIVE(BOXACROTRAINER) && sensors(SENSOR_ACC));
+#endif // USE_ACRO_TRAINER
+
 #ifdef USE_RC_SMOOTHING_FILTER
     if (ARMING_FLAG(ARMED) && !rcSmoothingInitializationComplete()) {
         beeper(BEEPER_RC_SMOOTHING_INIT_FAIL);
@@ -1089,6 +1081,8 @@ void processRxModes(timeUs_t currentTimeUs)
 #endif
 
     pidSetAntiGravityState(IS_RC_MODE_ACTIVE(BOXANTIGRAVITY) || featureIsEnabled(FEATURE_ANTI_GRAVITY));
+
+    return true;
 }
 
 static FAST_CODE void subTaskPidController(timeUs_t currentTimeUs)
@@ -1096,7 +1090,7 @@ static FAST_CODE void subTaskPidController(timeUs_t currentTimeUs)
     uint32_t startTime = 0;
     if (debugMode == DEBUG_PIDLOOP) {startTime = micros();}
     // PID - note this is function pointer set by setPIDController()
-    pidController(currentPidProfile);
+    pidController(currentPidProfile, currentTimeUs);
     DEBUG_SET(DEBUG_PIDLOOP, 1, micros() - startTime);
 
 #ifdef USE_RUNAWAY_TAKEOFF
@@ -1197,7 +1191,7 @@ static FAST_CODE void subTaskMotorUpdate(timeUs_t currentTimeUs)
         startTime = micros();
     }
 
-    mixTable(currentTimeUs);
+    mixTable(currentTimeUs, currentPidProfile->vbatPidCompensation);
 
 #ifdef USE_SERVOS
     // motor outputs are used as sources for servo mixing, so motors must be calculated using mixTable() before servos.
@@ -1240,7 +1234,7 @@ static FAST_CODE_NOINLINE void subTaskRcCommand(timeUs_t currentTimeUs)
         resetYawAxis();
     }
 
-    processRcCommand(currentTimeUs);
+    processRcCommand();
 }
 
 FAST_CODE void taskGyroSample(timeUs_t currentTimeUs)

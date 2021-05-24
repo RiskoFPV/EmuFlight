@@ -19,19 +19,7 @@ variables:
 
 name: $(Build.RequestedFor)_$(Build.SourceBranchName)_$(BuildID)
 
-trigger:
-  batch: true
-  branches:
-    include:
-    - master
-    - "*-maintenance"
-
-pr:
-  drafts: false
-  branches:
-    include:
-    - master
-    - "*-maintenance"
+trigger: none
 
 stages:
 - stage: Build
@@ -42,16 +30,10 @@ stages:
     steps:
     - script: make arm_sdk_install
       displayName: 'Install the build toolchain'
-    - script: sudo apt-get install -y libblocksruntime-dev
-      displayName: 'Install extra packages'
-    - script: make  EXTRA_FLAGS=-Werror checks
-      displayName: 'Run sanity checks'
-    - script: make  EXTRA_FLAGS=-Werror test-all
-      displayName: 'Run all unit tests'
-    - script: make  EXTRA_FLAGS=-Werror all
-      displayName: 'Build all official targets'
+    - script: make unified
+      displayName: 'Build the Unified Targets'
     - script: mkdir release; cp obj/*.hex release/
-      displayName: 'Copy artifacts'
+      displayName: 'Copy artefacts'
     - task: PublishPipelineArtifact@1
       displayName: 'Publish Linux release'
       inputs: 

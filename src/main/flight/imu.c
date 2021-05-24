@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -85,12 +85,12 @@ static bool imuUpdated = false;
 #define ATTITUDE_RESET_ACTIVE_TIME 500000  // 500ms - Time to wait for attitude to converge at high gain
 #define GPS_COG_MIN_GROUNDSPEED 500        // 500cm/s minimum groundspeed for a gps heading to be considered valid
 
+int32_t accSum[XYZ_AXIS_COUNT];
 float accAverage[XYZ_AXIS_COUNT];
 
+uint32_t accTimeSum = 0;        // keep track for integration of acc
+int accSumCount = 0;
 bool canUseGPSHeading = true;
-
-bool levelRecoveryActive = false;
-int levelRecoveryStrength = 0;
 
 static float throttleAngleScale;
 static int throttleAngleValue;
@@ -99,7 +99,7 @@ static float smallAngleCosZ = 0;
 
 static imuRuntimeConfig_t imuRuntimeConfig;
 
-float rMat[3][3];
+STATIC_UNIT_TESTED float rMat[3][3];
 
 STATIC_UNIT_TESTED bool attitudeIsEstablished = false;
 
@@ -117,12 +117,8 @@ PG_REGISTER_WITH_RESET_TEMPLATE(imuConfig_t, imuConfig, PG_IMU_CONFIG, 1);
 
 PG_RESET_TEMPLATE(imuConfig_t, imuConfig,
     .dcm_kp = 2500,                // 1.0 * 10000
-    .dcm_ki = 7,                   // 0.003 * 10000
-    .small_angle = 180,
-    .level_recovery = 1,
-    .level_recovery_time = 2500,
-    .level_recovery_coef = 5,
-    .level_recovery_threshold = 1900,
+    .dcm_ki = 0,                   // 0.003 * 10000
+    .small_angle = 25,
 );
 
 static void imuQuaternionComputeProducts(quaternion *quat, quaternionProducts *quatProd)
@@ -178,11 +174,6 @@ void imuConfigure(uint16_t throttle_correction_angle, uint8_t throttle_correctio
     imuRuntimeConfig.dcm_kp = imuConfig()->dcm_kp / 10000.0f;
     imuRuntimeConfig.dcm_ki = imuConfig()->dcm_ki / 10000.0f;
 
-    imuRuntimeConfig.level_recovery = imuConfig()->level_recovery;
-    imuRuntimeConfig.level_recovery_time = imuConfig()->level_recovery_time;
-    imuRuntimeConfig.level_recovery_coef = imuConfig()->level_recovery_coef;
-    imuRuntimeConfig.level_recovery_threshold = imuConfig()->level_recovery_threshold;
-
     smallAngleCosZ = cos_approx(degreesToRadians(imuConfig()->small_angle));
 
     fc_acc = calculateAccZLowPassFilterRCTimeConstant(5.0f); // Set to fix value
@@ -206,6 +197,15 @@ void imuInit(void)
         printf("Create imuUpdateLock error!\n");
     }
 #endif
+}
+
+void imuResetAccelerationSum(void)
+{
+    accSum[0] = 0;
+    accSum[1] = 0;
+    accSum[2] = 0;
+    accSumCount = 0;
+    accTimeSum = 0;
 }
 
 #if defined(USE_ACC)
@@ -437,46 +437,7 @@ static float imuCalcKpGain(timeUs_t currentTimeUs, bool useAcc, float *gyroAvera
        }
     }
 
-    if (levelRecoveryActive) {
-        ret = imuRuntimeConfig.dcm_kp * (1.0f + imuRuntimeConfig.level_recovery_coef * levelRecoveryStrength / 1000);
-    }
-
     return ret;
-}
-
-static void imuHandleLevelRecovery(timeUs_t currentTimeUs)
-{
-    static timeUs_t previousCrashTime = 0;
-
-    for (int i = 0; i < XYZ_AXIS_COUNT; i++) {
-        if (ABS(gyro.gyroADCf[i]) > imuRuntimeConfig.level_recovery_threshold) {
-            previousCrashTime = currentTimeUs;
-        }
-    }
-
-    timeUs_t elapsedSinceCrash = (currentTimeUs - previousCrashTime);
-    if (elapsedSinceCrash < imuRuntimeConfig.level_recovery_time * 1000) {
-        levelRecoveryActive = true;
-        // 0 min, 1000 max
-        // First half - full, second half - decaying
-        levelRecoveryStrength = (imuRuntimeConfig.level_recovery_time * 1000 - elapsedSinceCrash) / imuRuntimeConfig.level_recovery_time;
-        levelRecoveryStrength *= 2;
-        if (levelRecoveryStrength > 1000)
-            levelRecoveryStrength = 1000;
-    } else {
-        levelRecoveryActive = false;
-        levelRecoveryStrength = 0;
-    }
-
-    if (!ARMING_FLAG(ARMED)) {
-        levelRecoveryActive = false;
-        levelRecoveryStrength = 0;
-    }
-}
-
-bool isLevelRecoveryActive(void)
-{
-  return levelRecoveryActive;
 }
 
 #if defined(USE_GPS)
@@ -589,9 +550,6 @@ static void imuCalculateEstimatedAttitude(timeUs_t currentTimeUs)
 
     if (accGetAccumulationAverage(accAverage)) {
         useAcc = imuIsAccelerometerHealthy(accAverage);
-    }
-    if (imuRuntimeConfig.level_recovery) {
-        imuHandleLevelRecovery(currentTimeUs);
     }
 
     imuMahonyAHRSupdate(deltaT * 1e-6f,

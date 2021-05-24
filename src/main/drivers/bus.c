@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -226,28 +226,4 @@ uint8_t busReadRegister(const busDevice_t *busdev, uint8_t reg)
     busReadRegisterBuffer(busdev, reg, &data, 1);
     return data;
 #endif
-}
-
-void busDeviceRegister(const busDevice_t *busdev)
-{
-#if !defined(USE_SPI) && !defined(USE_I2C)
-    UNUSED(busdev);
-#endif
-
-    switch (busdev->bustype) {
-#if defined(USE_SPI)
-    case BUSTYPE_SPI:
-        spiBusDeviceRegister(busdev);
-
-        break;
-#endif
-#if defined(USE_I2C)
-    case BUSTYPE_I2C:
-        i2cBusDeviceRegister(busdev);
-
-        break;
-#endif
-    default:
-        break;
-    }
 }

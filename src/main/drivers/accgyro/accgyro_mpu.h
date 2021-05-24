@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -179,11 +179,6 @@ enum icm_high_range_accel_fsr_e {
     NUM_ICM_HIGH_RANGE_ACCEL_FSR
 };
 
-enum fchoice_b {
-    FCB_DISABLED = 0x00,
-    FCB_3600_32 = 0x02
-};
-
 typedef enum {
     GYRO_OVERFLOW_NONE = 0x00,
     GYRO_OVERFLOW_X = 0x01,
@@ -207,7 +202,6 @@ typedef enum {
     ICM_42605_SPI,
     BMI_160_SPI,
     BMI_270_SPI,
-    LSM6DSO_SPI,
     L3GD20_SPI,
 } mpuSensor_e;
 
@@ -229,7 +223,6 @@ bool mpuGyroReadSPI(struct gyroDev_s *gyro);
 void mpuPreInit(const struct gyroDeviceConfig_s *config);
 bool mpuDetect(struct gyroDev_s *gyro, const struct gyroDeviceConfig_s *config);
 uint8_t mpuGyroDLPF(struct gyroDev_s *gyro);
-uint8_t mpuGyroFCHOICE(struct gyroDev_s *gyro);
 uint8_t mpuGyroReadRegister(const busDevice_t *bus, uint8_t reg);
 
 struct accDev_s;

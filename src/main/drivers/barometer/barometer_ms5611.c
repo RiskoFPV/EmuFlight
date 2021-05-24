@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -35,9 +35,6 @@
 #include "drivers/bus_spi.h"
 #include "drivers/io.h"
 #include "drivers/time.h"
-
-// 10 MHz max SPI frequency
-#define MS5611_MAX_SPI_CLK_HZ 10000000
 
 // MS5611, Standard address 0x77
 #define MS5611_I2C_ADDR                 0x77
@@ -70,9 +67,9 @@ void ms5611BusInit(busDevice_t *busdev)
         IOInit(busdev->busdev_u.spi.csnPin, OWNER_BARO_CS, 0);
         IOConfigGPIO(busdev->busdev_u.spi.csnPin, IOCFG_OUT_PP);
 #ifdef USE_SPI_TRANSACTION
-        spiBusTransactionInit(busdev, SPI_MODE3_POL_HIGH_EDGE_2ND, spiCalculateDivider(MS5611_MAX_SPI_CLK_HZ));
+        spiBusTransactionInit(busdev, SPI_MODE3_POL_HIGH_EDGE_2ND, SPI_CLOCK_STANDARD);
 #else
-        spiBusSetDivisor(busdev, spiCalculateDivider(MS5611_MAX_SPI_CLK_HZ)); // XXX
+        spiBusSetDivisor(busdev, SPI_CLOCK_STANDARD); // XXX
 #endif
     }
 #else
@@ -260,8 +257,6 @@ bool ms5611Detect(baroDev_t *baro)
     if (ms5611CRC(ms5611_c) != 0) {
         goto fail;
     }
-
-    busDeviceRegister(busdev);
 
     // TODO prom + CRC
     baro->ut_delay = 10000;

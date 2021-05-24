@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -112,7 +112,7 @@ const uartHardware_t uartHardware[UARTDEV_COUNT] = {
 #ifdef USE_UART3_TX_DMA
         .txDMAResource = (dmaResource_t *)DMA1_Stream3,
 #endif
-        .rxPins = { { DEFIO_TAG_E(PB11) }, { DEFIO_TAG_E(PC11) }, { DEFIO_TAG_E(PD9) } },
+        .rxPins = { { DEFIO_TAG_E(PB11) }, { DEFIO_TAG_E(PC11) }, { DEFIO_TAG_E(PD9) }, { DEFIO_TAG_E(PC5) } },
         .txPins = { { DEFIO_TAG_E(PB10) }, { DEFIO_TAG_E(PC10) }, { DEFIO_TAG_E(PD8) } },
         .af = GPIO_AF_USART3,
         .rcc = RCC_APB1(USART3),
@@ -280,8 +280,26 @@ uartPort_t *serialUART(UARTDevice_e device, uint32_t baudRate, portMode_e mode, 
     }
 
     if (options & SERIAL_BIDIR) {
+#ifdef USE_BRAINFPV_FPGA
+        IOInit(txIO, OWNER_SERIAL_TX, RESOURCE_INDEX(device));
+        if ((uart->port.USARTx == USART6)) {
+            IOConfigGPIOAF(txIO, IOCFG_AF_PP_UP, hardware->af);
+        }
+        else {
+            IOConfigGPIOAF(txIO, (options & SERIAL_BIDIR_PP) ? IOCFG_AF_PP : IOCFG_AF_OD, hardware->af);
+        }
+#ifdef BRAINRE1
+        // hack: enable normal serial for UART6
+        if ((uart->port.USARTx == USART6)) {
+            IOConfigGPIOAF(txIO, IOCFG_AF_PP_UP, hardware->af);
+            IOInit(rxIO, OWNER_SERIAL_RX, RESOURCE_INDEX(device));
+            IOConfigGPIOAF(rxIO, IOCFG_AF_PP_UP, hardware->af);
+        }
+#endif
+#else
         IOInit(txIO, OWNER_SERIAL_TX, RESOURCE_INDEX(device));
         IOConfigGPIOAF(txIO, ((options & SERIAL_BIDIR_PP) || (options & SERIAL_BIDIR_PP_PD)) ? IOCFG_AF_PP : IOCFG_AF_OD, hardware->af);
+#endif
     } else {
         if ((mode & MODE_TX) && txIO) {
             IOInit(txIO, OWNER_SERIAL_TX, RESOURCE_INDEX(device));

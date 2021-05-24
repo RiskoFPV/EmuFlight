@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -53,9 +53,6 @@
 #include "scheduler/scheduler.h"
 
 // This sensor is also available also part of the MPU-9250 connected to the secondary I2C bus.
-
-// 10 MHz max SPI frequency
-#define AK8963_MAX_SPI_CLK_HZ 10000000
 
 // AK8963, mag sensor address
 #define AK8963_MAG_I2C_ADDRESS          0x0C
@@ -350,8 +347,6 @@ static bool ak8963Init(magDev_t *mag)
 
     const busDevice_t *busdev = &mag->busdev;
 
-    busDeviceRegister(busdev);
-
     ak8963WriteRegister(busdev, AK8963_MAG_REG_CNTL1, CNTL1_MODE_POWER_DOWN);               // power down before entering fuse mode
     ak8963WriteRegister(busdev, AK8963_MAG_REG_CNTL1, CNTL1_MODE_FUSE_ROM);                 // Enter Fuse ROM access mode
     ak8963ReadRegisterBuffer(busdev, AK8963_MAG_REG_ASAX, asa, sizeof(asa));                // Read the x-, y-, and z-axis calibration values
@@ -386,9 +381,9 @@ void ak8963BusInit(busDevice_t *busdev)
         IOInit(busdev->busdev_u.spi.csnPin, OWNER_COMPASS_CS, 0);
         IOConfigGPIO(busdev->busdev_u.spi.csnPin, IOCFG_OUT_PP);
 #ifdef USE_SPI_TRANSACTION
-        spiBusTransactionInit(busdev, SPI_MODE3_POL_HIGH_EDGE_2ND, spiCalculateDivider(AK8963_MAX_SPI_CLK_HZ));
+        spiBusTransactionInit(busdev, SPI_MODE3_POL_HIGH_EDGE_2ND, SPI_CLOCK_STANDARD);
 #else
-        spiBusSetDivisor(busdev, spiCalculateDivider(AK8963_MAX_SPI_CLK_HZ));
+        spiBusSetDivisor(busdev, SPI_CLOCK_STANDARD);
 #endif
         break;
 #endif

@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -58,6 +58,7 @@
 #include "io/gimbal.h"
 #include "io/gps.h"
 #include "io/ledstrip.h"
+#include "io/motors.h"
 
 #include "rx/rx.h"
 
@@ -352,7 +353,11 @@ void mavlinkSendPosition(void)
         // alt Altitude in 1E3 meters (millimeters) above MSL
         gpsSol.llh.altCm * 10,
         // relative_alt Altitude above ground in meters, expressed as * 1000 (millimeters)
-        getEstimatedAltitudeCm() * 10,
+#if defined(USE_BARO) || defined(USE_RANGEFINDER)
+        (sensors(SENSOR_RANGEFINDER) || sensors(SENSOR_BARO)) ? getEstimatedAltitudeCm() * 10 : gpsSol.llh.altCm * 10,
+#else
+        gpsSol.llh.altCm * 10,
+#endif
         // Ground X Speed (Latitude), expressed as m/s * 100
         0,
         // Ground Y Speed (Longitude), expressed as m/s * 100
@@ -367,9 +372,9 @@ void mavlinkSendPosition(void)
 
     mavlink_msg_gps_global_origin_pack(0, 200, &mavMsg,
         // latitude Latitude (WGS84), expressed as * 1E7
-        GPS_home[GPS_LATITUDE],
+        GPS_home[LAT],
         // longitude Longitude (WGS84), expressed as * 1E7
-        GPS_home[GPS_LONGITUDE],
+        GPS_home[LON],
         // altitude Altitude(WGS84), expressed as * 1000
         0);
     msgLength = mavlink_msg_to_send_buffer(mavBuffer, &mavMsg);
@@ -414,7 +419,24 @@ void mavlinkSendHUDAndHeartbeat(void)
     }
 #endif
 
-    mavAltitude = getEstimatedAltitudeCm() / 100.0;
+    // select best source for altitude
+#if defined(USE_BARO) || defined(USE_RANGEFINDER)
+    if (sensors(SENSOR_RANGEFINDER) || sensors(SENSOR_BARO)) {
+        // Baro or sonar generally is a better estimate of altitude than GPS MSL altitude
+        mavAltitude = getEstimatedAltitudeCm() / 100.0;
+    }
+#if defined(USE_GPS)
+    else if (sensors(SENSOR_GPS)) {
+        // No sonar or baro, just display altitude above MLS
+        mavAltitude = gpsSol.llh.altCm / 100.0;
+    }
+#endif
+#elif defined(USE_GPS)
+    if (sensors(SENSOR_GPS)) {
+        // No sonar or baro, just display altitude above MLS
+        mavAltitude = gpsSol.llh.altCm / 100.0;
+    }
+#endif
 
     mavlink_msg_vfr_hud_pack(0, 200, &mavMsg,
         // airspeed Current airspeed in m/s

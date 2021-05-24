@@ -1,7 +1,7 @@
 /*
  * This file is part of Cleanflight, Betaflight and INAV.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
@@ -18,8 +18,4 @@
  * If not, see <http://www.gnu.org/licenses/>.
  */
 
-#define MSP2_BETAFLIGHT_BIND                0x3000
-#define MSP2_MOTOR_OUTPUT_REORDERING        0x3001
-#define MSP2_SET_MOTOR_OUTPUT_REORDERING    0x3002
-#define MSP2_SEND_DSHOT_COMMAND             0x3003
-
+#define MSP2_BETAFLIGHT_BIND            0x3000

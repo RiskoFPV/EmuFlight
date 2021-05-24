@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -218,6 +218,25 @@ int servoDirection(int servoIndex, int inputSource)
     }
 }
 
+void servosInit(void)
+{
+    // enable servos for mixes that require them. note, this shifts motor counts.
+    useServo = mixers[getMixerMode()].useServo;
+    // if we want camstab/trig, that also enables servos, even if mixer doesn't
+    if (featureIsEnabled(FEATURE_SERVO_TILT) || featureIsEnabled(FEATURE_CHANNEL_FORWARDING)) {
+        useServo = 1;
+    }
+
+    // give all servos a default command
+    for (uint8_t i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
+        servo[i] = DEFAULT_SERVO_MIDDLE;
+    }
+
+    if (mixerIsTricopter()) {
+        servosTricopterInit();
+    }
+}
+
 void loadCustomServoMixer(void)
 {
     // reset settings
@@ -235,7 +254,7 @@ void loadCustomServoMixer(void)
     }
 }
 
-static void servoConfigureOutput(void)
+void servoConfigureOutput(void)
 {
     if (useServo) {
         servoRuleCount = servoMixers[getMixerMode()].servoRuleCount;
@@ -256,27 +275,6 @@ static void servoConfigureOutput(void)
     }
 }
 
-
-void servosInit(void)
-{
-    // enable servos for mixes that require them. note, this shifts motor counts.
-    useServo = mixers[getMixerMode()].useServo;
-    // if we want camstab/trig, that also enables servos, even if mixer doesn't
-    if (featureIsEnabled(FEATURE_SERVO_TILT) || featureIsEnabled(FEATURE_CHANNEL_FORWARDING)) {
-        useServo = 1;
-    }
-
-    // give all servos a default command
-    for (uint8_t i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
-        servo[i] = DEFAULT_SERVO_MIDDLE;
-    }
-
-    if (mixerIsTricopter()) {
-        servosTricopterInit();
-    }
-
-    servoConfigureOutput();
-}
 
 void servoMixerLoadMix(int index)
 {

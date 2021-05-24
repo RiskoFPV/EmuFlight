@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -27,8 +27,6 @@
 
 #pragma once
 
-#include "common/unit.h"
-
 #include "io/serial.h"
 
 #include "pg/pg.h"
@@ -41,6 +39,11 @@ typedef enum {
     FRSKY_FORMAT_DMS = 0,
     FRSKY_FORMAT_NMEA
 } frskyGpsCoordFormat_e;
+
+typedef enum {
+    FRSKY_UNIT_METRICS = 0,
+    FRSKY_UNIT_IMPERIALS
+} frskyUnit_e;
 
 typedef enum {
     SENSOR_VOLTAGE         = 1 << 0,
@@ -67,8 +70,7 @@ typedef enum {
                             | ESC_SENSOR_RPM \
                             | ESC_SENSOR_TEMPERATURE,
     SENSOR_TEMPERATURE     = 1 << 19,
-    SENSOR_CAP_USED        = 1 << 20,
-    SENSOR_ALL             = (1 << 21) - 1,
+    SENSOR_ALL             = (1 << 20) - 1,
 } sensor_e;
 
 typedef struct telemetryConfig_s {
@@ -76,8 +78,8 @@ typedef struct telemetryConfig_s {
     int16_t gpsNoFixLongitude;
     uint8_t telemetry_inverted;
     uint8_t halfDuplex;
-    uint8_t frsky_coordinate_format;
-    uint8_t frsky_unit;
+    frskyGpsCoordFormat_e frsky_coordinate_format;
+    frskyUnit_e frsky_unit;
     uint8_t frsky_vfas_precision;
     uint8_t hottAlarmSoundInterval;
     uint8_t pidValuesAsTelemetry;

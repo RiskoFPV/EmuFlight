@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -45,10 +45,10 @@
 #include "fc/rc.h"
 
 #include "flight/pid.h"
-#include "flight/pid_init.h"
 
 #include "io/beeper.h"
 #include "io/ledstrip.h"
+#include "io/motors.h"
 #include "io/pidaudio.h"
 
 #include "osd/osd.h"
@@ -196,6 +196,10 @@ static const adjustmentConfig_t defaultAdjustmentConfigs[ADJUSTMENT_FUNCTION_COU
         .adjustmentFunction = ADJUSTMENT_FEEDFORWARD_TRANSITION,
         .mode = ADJUSTMENT_MODE_STEP,
         .data = { .step = 1 }
+    }, {
+        .adjustmentFunction = ADJUSTMENT_HORIZON_STRENGTH,
+        .mode = ADJUSTMENT_MODE_SELECT,
+        .data = { .switchPositions = 255 }
     }, {
         .adjustmentFunction = ADJUSTMENT_PID_AUDIO,
         .mode = ADJUSTMENT_MODE_SELECT,
@@ -597,6 +601,16 @@ static uint8_t applySelectAdjustment(adjustmentFunction_e adjustmentFunction, ui
             blackboxLogInflightAdjustmentEvent(ADJUSTMENT_RATE_PROFILE, position);
 
             beeps = position + 1;
+        }
+        break;
+    case ADJUSTMENT_HORIZON_STRENGTH:
+        {
+            uint8_t newValue = constrain(position, 0, 200); // FIXME magic numbers repeated in serial_cli.c
+            if (currentPidProfile->pid[PID_LEVEL].D != newValue) {
+                beeps = ((newValue - currentPidProfile->pid[PID_LEVEL].D) / 8) + 1;
+                currentPidProfile->pid[PID_LEVEL].D = newValue;
+                blackboxLogInflightAdjustmentEvent(ADJUSTMENT_HORIZON_STRENGTH, position);
+            }
         }
         break;
     case ADJUSTMENT_PID_AUDIO:

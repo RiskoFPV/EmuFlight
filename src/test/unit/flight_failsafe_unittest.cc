@@ -543,7 +543,7 @@ TEST(FlightFailsafeTest, TestFailsafeNotActivatedWhenDisarmedAndRXLossIsDetected
 // STUBS
 
 extern "C" {
-float rcData[MAX_SUPPORTED_RC_CHANNEL_COUNT];
+int16_t rcData[MAX_SUPPORTED_RC_CHANNEL_COUNT];
 float rcCommand[4];
 int16_t debug[DEBUG16_VALUE_COUNT];
 bool isUsingSticksToArm = true;
@@ -596,4 +596,6 @@ bool areSticksActive(uint8_t stickPercentLimit) {
 }
 
 void beeperConfirmationBeeps(uint8_t beepCount) { UNUSED(beepCount); }
+
+bool crashRecoveryModeActive(void) { return false; }
 }

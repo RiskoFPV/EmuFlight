@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -55,8 +55,6 @@
   __extension__ ({ __typeof__ (x) _x = (x); \
   _x > 0 ? _x : -_x; })
 
-#define SIGN(x) ((x > 0.0f) - (x < 0.0f))
-
 #define Q12 (1 << 12)
 
 #define HZ_TO_INTERVAL(x) (1.0f / (x))
@@ -99,9 +97,10 @@ typedef struct fp_rotationMatrix_s {
     float m[3][3];              // matrix
 } fp_rotationMatrix_t;
 
-float fast_fsqrtf(const double value);
 int gcd(int num, int denom);
+float powerf(float base, int exp);
 int32_t applyDeadband(int32_t value, int32_t deadband);
+float fapplyDeadband(float value, float deadband);
 
 void devClear(stdev_t *dev);
 void devPush(stdev_t *dev, float x);

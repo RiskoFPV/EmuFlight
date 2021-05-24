@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -22,11 +22,11 @@
 
 #include "common/utils.h"
 
-#define FC_FIRMWARE_NAME            "Betaflight" // to be fixed later as a fix now will break things initial version is 5.0.0 so blackbox and everything works
+#define FC_FIRMWARE_NAME            "Betaflight"
 #define FC_FIRMWARE_IDENTIFIER      "BTFL"
 #define FC_VERSION_MAJOR            4  // increment when a major release is made (big new feature, etc)
 #define FC_VERSION_MINOR            2  // increment when a minor release is made (small new feature, change etc)
-#define FC_VERSION_PATCH_LEVEL      25  // increment when a bug is fixed
+#define FC_VERSION_PATCH_LEVEL      9  // increment when a bug is fixed
 
 #define FC_VERSION_STRING STR(FC_VERSION_MAJOR) "." STR(FC_VERSION_MINOR) "." STR(FC_VERSION_PATCH_LEVEL)
 

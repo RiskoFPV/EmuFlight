@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -90,8 +90,8 @@
 #endif
 
 #if !defined(USE_TELEMETRY)
+#undef USE_CRSF_CMS_TELEMETRY
 #undef USE_TELEMETRY_CRSF
-#undef USE_TELEMETRY_GHST
 #undef USE_TELEMETRY_FRSKY_HUB
 #undef USE_TELEMETRY_HOTT
 #undef USE_TELEMETRY_IBUS
@@ -108,10 +108,6 @@
 #undef USE_TELEMETRY_CRSF
 #undef USE_CRSF_LINK_STATISTICS
 #undef USE_RX_RSSI_DBM
-#endif
-
-#if !defined(USE_SERIALRX_GHST)
-#undef USE_TELEMETRY_GHST
 #endif
 
 #if !defined(USE_TELEMETRY_CRSF) || !defined(USE_CMS)
@@ -135,11 +131,8 @@
 #undef USE_SPEKTRUM_RSSI_PERCENT_CONVERSION
 #undef USE_SPEKTRUM_VTX_CONTROL
 #undef USE_SPEKTRUM_VTX_TELEMETRY
-#undef USE_TELEMETRY_SRXL
-#endif
-
-#if !defined(USE_CMS) || !defined(USE_TELEMETRY_SRXL)
 #undef USE_SPEKTRUM_CMS_TELEMETRY
+#undef USE_TELEMETRY_SRXL
 #endif
 
 #if defined(USE_SERIALRX_SBUS) || defined(USE_SERIALRX_FPORT)
@@ -231,7 +224,6 @@
 #undef USE_RX_LINK_QUALITY_INFO
 #undef USE_OSD_PROFILES
 #undef USE_OSD_STICK_OVERLAY
-#undef USE_RX_LINK_UPLINK_POWER
 #endif
 
 #if defined(USE_GPS_RESCUE)
@@ -245,11 +237,6 @@
 
 #if defined(USE_GYRO_SPI_ICM20689) || defined(USE_GYRO_SPI_MPU6000) || defined(USE_GYRO_SPI_MPU6500) || defined(USE_GYRO_SPI_MPU9250) || defined(USE_GYRO_L3GD20) || defined(USE_GYRO_SPI_ICM42605)
 #define USE_SPI_GYRO
-#endif
-
-// Determine if the target could have a 32KHz capable gyro
-#if defined(USE_GYRO_SPI_MPU6500) || defined(USE_GYRO_SPI_MPU9250) || defined(USE_GYRO_SPI_ICM20689)
-#define USE_32K_CAPABLE_GYRO
 #endif
 
 // CX10 is a special case of SPI RX which requires XN297
@@ -276,10 +263,6 @@
 #ifndef SPI_PREINIT_COUNT
 #define SPI_PREINIT_COUNT 16 // 2 x 8 (GYROx2, BARO, MAG, MAX, FLASHx2, RX)
 #endif
-#endif
-
-#ifndef USE_BLACKBOX
-#undef USE_USB_MSC
 #endif
 
 #if (!defined(USE_FLASHFS) || !defined(USE_RTC_TIME) || !defined(USE_USB_MSC) || !defined(USE_PERSISTENT_OBJECTS))
@@ -329,6 +312,7 @@
 
 #if !defined(USE_ACC)
 #undef USE_GPS_RESCUE
+#undef USE_ACRO_TRAINER
 #endif
 
 #if (!defined(USE_GPS_RESCUE) || !defined(USE_CMS_FAILSAFE_MENU))
@@ -397,6 +381,10 @@ extern uint8_t __config_end;
 #undef USE_DYN_IDLE
 #endif
 
+#ifndef USE_ITERM_RELAX
+#undef USE_ABSOLUTE_CONTROL
+#endif
+
 #if defined(USE_CUSTOM_DEFAULTS)
 #define USE_CUSTOM_DEFAULTS_ADDRESS
 #endif
@@ -408,8 +396,4 @@ extern uint8_t __config_end;
 
 #if defined(USE_RX_SPI) || defined (USE_SERIALRX_SRXL2)
 #define USE_RX_BIND
-#endif
-
-#ifndef USE_GPS
-#undef USE_GPS_PLUS_CODES
 #endif

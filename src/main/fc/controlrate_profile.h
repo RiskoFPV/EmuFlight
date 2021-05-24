@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -29,14 +29,8 @@ typedef enum {
     RATES_TYPE_RACEFLIGHT,
     RATES_TYPE_KISS,
     RATES_TYPE_ACTUAL,
-    RATES_TYPE_COUNT    // must be the final entry
+    RATES_TYPE_QUICK,
 } ratesType_e;
-
-typedef struct ratesSettingsLimits_s {
-    uint8_t rc_rate_limit;
-    uint8_t srate_limit;
-    uint8_t expo_limit;
-} ratesSettingsLimits_t;
 
 typedef enum {
     THROTTLE_LIMIT_TYPE_OFF = 0,
@@ -45,14 +39,10 @@ typedef enum {
     THROTTLE_LIMIT_TYPE_COUNT   // must be the last entry
 } throttleLimitType_e;
 
-typedef struct rateDynamics_s {
-    uint8_t rateSensCenter;
-    uint8_t rateSensEnd;
-    uint8_t rateCorrectionCenter;
-    uint8_t rateCorrectionEnd;
-    uint8_t rateWeightCenter;
-    uint8_t rateWeightEnd;
-} rateDynamics_t;
+typedef enum {
+    TPA_MODE_PD,
+    TPA_MODE_D
+} tpaMode_e;
 
 #define MAX_RATE_PROFILE_NAME_LENGTH 8u
 
@@ -63,19 +53,18 @@ typedef struct controlRateConfig_s {
     uint8_t rcRates[3];
     uint8_t rcExpo[3];
     uint8_t rates[3];
-    rateDynamics_t rateDynamics;
+    uint8_t dynThrPID;
+    uint16_t tpa_breakpoint;                // Breakpoint where TPA is activated
     uint8_t throttle_limit_type;            // Sets the throttle limiting type - off, scale or clip
     uint8_t throttle_limit_percent;         // Sets the maximum pilot commanded throttle limit
-    uint8_t addRollToYawRc;
-    uint8_t addYawToRollRc;
-    uint8_t rollPitchMagExpo;       // expo applied when pitch and roll are both high
+    uint16_t rate_limit[3];                 // Sets the maximum rate for the axes
+    uint8_t tpaMode;                        // Controls which PID terms TPA effects
     char profileName[MAX_RATE_PROFILE_NAME_LENGTH + 1]; // Descriptive name for rate profile
 } controlRateConfig_t;
 
 PG_DECLARE_ARRAY(controlRateConfig_t, CONTROL_RATE_PROFILE_COUNT, controlRateProfiles);
 
 extern controlRateConfig_t *currentControlRateProfile;
-extern const ratesSettingsLimits_t ratesSettingLimits[RATES_TYPE_COUNT];
 
 void loadControlRateProfile(void);
 void changeControlRateProfile(uint8_t controlRateProfileIndex);

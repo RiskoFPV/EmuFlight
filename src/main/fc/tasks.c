@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -110,6 +110,10 @@
 #endif
 #endif
 
+#if defined(BRAINFPV)
+#include "brainfpv/brainfpv_system.h"
+#endif
+
 #include "tasks.h"
 
 static void taskMain(timeUs_t currentTimeUs)
@@ -118,6 +122,10 @@ static void taskMain(timeUs_t currentTimeUs)
 
 #ifdef USE_SDCARD
     afatfs_poll();
+#endif
+
+#ifdef BRAINFPV
+    brainFPVSystemCheck();
 #endif
 }
 
@@ -158,55 +166,22 @@ static void taskUpdateAccelerometer(timeUs_t currentTimeUs)
 }
 #endif
 
-static enum {
-    CHECK, PROCESS, MODES, UPDATE
-} rxState = CHECK;
-
-bool taskUpdateRxMainInProgress()
-{
-    return (rxState != CHECK);
-}
-
 static void taskUpdateRxMain(timeUs_t currentTimeUs)
 {
-    switch (rxState) {
-    default:
-    case CHECK:
-        ignoreTaskTime();
-        rxState = PROCESS;
-        break;
+    if (!processRx(currentTimeUs)) {
+        return;
+    }
 
-    case PROCESS:
-        ignoreTaskTime();
-        if (!processRx(currentTimeUs)) {
-            rxState = CHECK;
-            
-            break;
-        }
-        rxState = MODES;
-        break;
-
-    case MODES:
-        processRxModes(currentTimeUs);
-        rxState = UPDATE;
-        break;
-
-    case UPDATE:
-        ignoreTaskTime();
-        // updateRcCommands sets rcCommand, which is needed by updateAltHoldState and updateSonarAltHoldState
-        updateRcCommands();
-        updateArmingStatus();
+    // updateRcCommands sets rcCommand, which is needed by updateAltHoldState and updateSonarAltHoldState
+    updateRcCommands();
+    updateArmingStatus();
 
 #ifdef USE_USB_CDC_HID
-        if (!ARMING_FLAG(ARMED)) {
-            sendRcDataToHid();
-        }
-#endif
-        rxState = CHECK;
-        break;
+    if (!ARMING_FLAG(ARMED)) {
+        sendRcDataToHid();
     }
+#endif
 }
-
 
 #ifdef USE_BARO
 static void taskUpdateBaro(timeUs_t currentTimeUs)
@@ -290,15 +265,22 @@ void tasksInit(void)
     const bool useBatteryAlerts = batteryConfig()->useVBatAlerts || batteryConfig()->useConsumptionAlerts || featureIsEnabled(FEATURE_OSD);
     setTaskEnabled(TASK_BATTERY_ALERTS, (useBatteryVoltage || useBatteryCurrent) && useBatteryAlerts);
 
-#ifdef USE_STACK_CHECK
+#ifdef STACK_CHECK
     setTaskEnabled(TASK_STACK_CHECK, true);
 #endif
 
     if (sensors(SENSOR_GYRO)) {
+#ifdef BRAINFPV
+        // Set the task period below the actual looptime, as the gyro interrupt kicks-off the scheduler
+        rescheduleTask(TASK_GYRO, gyro.sampleLooptime - 10);
+        rescheduleTask(TASK_FILTER, gyro.targetLooptime - 10);
+        rescheduleTask(TASK_PID, gyro.targetLooptime - 10);     
+#else
         rescheduleTask(TASK_GYRO, gyro.sampleLooptime);
         rescheduleTask(TASK_FILTER, gyro.targetLooptime);
-        rescheduleTask(TASK_PID, gyro.targetLooptime);
-        setTaskEnabled(TASK_GYRO, true);
+        rescheduleTask(TASK_PID, gyro.targetLooptime);     
+#endif
+     	setTaskEnabled(TASK_GYRO, true);
         setTaskEnabled(TASK_FILTER, true);
         setTaskEnabled(TASK_PID, true);
         schedulerEnableGyro();
@@ -368,8 +350,11 @@ void tasksInit(void)
 #endif
 
 #ifdef USE_OSD
-    rescheduleTask(TASK_OSD, TASK_PERIOD_HZ(osdConfig()->task_frequency));
-    setTaskEnabled(TASK_OSD, featureIsEnabled(FEATURE_OSD) && osdGetDisplayPort(NULL));
+#ifdef USE_BRAINFPV_OSD
+    setTaskEnabled(TASK_OSD, featureIsEnabled(FEATURE_OSD) && osdInitialized() && !VideoIsInitialized());
+#else
+    setTaskEnabled(TASK_OSD, featureIsEnabled(FEATURE_OSD) && osdInitialized());
+#endif
 #endif
 
 #ifdef USE_BST
@@ -385,14 +370,22 @@ void tasksInit(void)
 #endif
 
 #ifdef USE_PINIOBOX
-    pinioBoxTaskControl();
+    setTaskEnabled(TASK_PINIOBOX, true);
 #endif
 
 #ifdef USE_CMS
 #ifdef USE_MSP_DISPLAYPORT
+#ifdef USE_BRAINFPV_OSD
+    setTaskEnabled(TASK_CMS, !VideoIsInitialized());
+#else
     setTaskEnabled(TASK_CMS, true);
+#endif
+#else
+#ifdef USE_BRAINFPV_OSD
+    setTaskEnabled(TASK_CMS, (featureIsEnabled(FEATURE_OSD) || featureIsEnabled(FEATURE_DASHBOARD)) && !VideoIsInitialized());
 #else
     setTaskEnabled(TASK_CMS, featureIsEnabled(FEATURE_OSD) || featureIsEnabled(FEATURE_DASHBOARD));
+#endif
 #endif
 #endif
 
@@ -442,7 +435,7 @@ task_t tasks[TASK_COUNT] = {
     [TASK_TRANSPONDER] = DEFINE_TASK("TRANSPONDER", NULL, NULL, transponderUpdate, TASK_PERIOD_HZ(250), TASK_PRIORITY_LOW),
 #endif
 
-#ifdef USE_STACK_CHECK
+#ifdef STACK_CHECK
     [TASK_STACK_CHECK] = DEFINE_TASK("STACKCHECK", NULL, NULL, taskStackCheck, TASK_PERIOD_HZ(10), TASK_PRIORITY_IDLE),
 #endif
 
@@ -480,8 +473,8 @@ task_t tasks[TASK_COUNT] = {
     [TASK_DASHBOARD] = DEFINE_TASK("DASHBOARD", NULL, NULL, dashboardUpdate, TASK_PERIOD_HZ(10), TASK_PRIORITY_LOW),
 #endif
 
-#ifdef USE_OSD
-    [TASK_OSD] = DEFINE_TASK("OSD", NULL, NULL, osdUpdate, TASK_PERIOD_HZ(OSD_TASK_FREQUENCY_DEFAULT), TASK_PRIORITY_LOW),
+#if defined(USE_OSD)
+    [TASK_OSD] = DEFINE_TASK("OSD", NULL, NULL, osdUpdate, TASK_PERIOD_HZ(60), TASK_PRIORITY_LOW),
 #endif
 
 #ifdef USE_TELEMETRY

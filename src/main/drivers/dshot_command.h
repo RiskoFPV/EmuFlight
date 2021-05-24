@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -57,6 +57,8 @@ typedef enum {
     DSHOT_CMD_LED3_OFF, // BLHeli32 only
     DSHOT_CMD_AUDIO_STREAM_MODE_ON_OFF = 30, // KISS audio Stream mode on/Off
     DSHOT_CMD_SILENT_MODE_ON_OFF = 31, // KISS silent Mode on/Off
+    DSHOT_CMD_SIGNAL_LINE_TELEMETRY_DISABLE = 32,
+    DSHOT_CMD_SIGNAL_LINE_CONTINUOUS_ERPM_TELEMETRY = 33,
     DSHOT_CMD_MAX = 47
 } dshotCommands_e;
 
@@ -71,4 +73,4 @@ bool dshotCommandQueueEmpty(void);
 bool dshotCommandIsProcessing(void);
 uint8_t dshotCommandGetCurrent(uint8_t index);
 bool dshotCommandOutputIsEnabled(uint8_t motorCount);
-bool dshotStreamingCommandsAreEnabled(void);
+bool dshotCommandsAreEnabled(dshotCommandType_e commandType);

@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -66,24 +66,13 @@ void mscInit(void)
     }
 }
 
-bool mscCheckBootAndReset(void)
+bool mscCheckBoot(void)
 {
-    static bool firstCheck = true;
-    static bool mscMode;
-
-    if (firstCheck) {
-        // Cache the bootup value of RESET_MSC_REQUEST
-        const uint32_t bootModeRequest = persistentObjectRead(PERSISTENT_OBJECT_RESET_REASON);
-        if (bootModeRequest == RESET_MSC_REQUEST) {
-            mscMode = true;
-            // Ensure the next reset is to the configurator as the H7 processor retains the RTC value so
-            // a brief interruption of power is not enough to switch out of MSC mode
-            persistentObjectWrite(PERSISTENT_OBJECT_RESET_REASON, RESET_NONE);
-            firstCheck = false;
-        }
-    }
-
-    return mscMode;
+    const uint32_t bootModeRequest = persistentObjectRead(PERSISTENT_OBJECT_RESET_REASON);
+    return bootModeRequest == RESET_MSC_REQUEST;
+    // Note that we can't clear the persisent object after checking here. This is because
+    // this function is called multiple times during initialization. So we clear on a reset
+    // out of MSC mode.
 }
 
 void mscSetActive(void)

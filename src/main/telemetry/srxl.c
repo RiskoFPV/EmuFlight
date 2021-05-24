@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -29,44 +29,46 @@
 #include "build/version.h"
 
 #include "cms/cms.h"
+#include "io/displayport_srxl.h"
 
 #include "common/crc.h"
 #include "common/streambuf.h"
 #include "common/utils.h"
 
-#include "config/config.h"
 #include "config/feature.h"
 
-#include "drivers/dshot.h"
-#include "drivers/vtx_common.h"
+#include "io/gps.h"
+#include "io/serial.h"
 
+#include "config/config.h"
 #include "fc/rc_controls.h"
 #include "fc/runtime_config.h"
 
 #include "flight/imu.h"
 #include "flight/mixer.h"
 
-#include "io/displayport_srxl.h"
 #include "io/gps.h"
-#include "io/serial.h"
-#include "io/vtx_smartaudio.h"
-#include "io/vtx_tramp.h"
 
 #include "pg/rx.h"
 #include "pg/motor.h"
 
 #include "rx/rx.h"
 #include "rx/spektrum.h"
-#include "io/spektrum_vtx_control.h"
 #include "rx/srxl2.h"
+#include "io/spektrum_vtx_control.h"
 
-#include "sensors/adcinternal.h"
 #include "sensors/battery.h"
+#include "sensors/adcinternal.h"
 #include "sensors/esc_sensor.h"
 
 #include "telemetry/telemetry.h"
+#include "telemetry/srxl.h"
 
-#include "srxl.h"
+#include "drivers/vtx_common.h"
+#include "drivers/dshot.h"
+
+#include "io/vtx_tramp.h"
+#include "io/vtx_smartaudio.h"
 
 #define SRXL_ADDRESS_FIRST          0xA5
 #define SRXL_ADDRESS_SECOND         0x80
@@ -772,24 +774,18 @@ void initSrxlTelemetry(void)
 {
     // check if there is a serial port open for SRXL telemetry (ie opened by the SRXL RX)
     // and feature is enabled, if so, set SRXL telemetry enabled
-    if (srxlRxIsActive()) {
-        srxlTelemetryEnabled = true;
-        srxl2 = false;
+  if (srxlRxIsActive()) {
+    srxlTelemetryEnabled = true;
+    srxl2 = false;
 #if defined(USE_SERIALRX_SRXL2)
-    } else if (srxl2RxIsActive()) {
-        srxlTelemetryEnabled = true;
-        srxl2 = true;
+  } else if (srxl2RxIsActive()) {
+    srxlTelemetryEnabled = true;
+    srxl2 = true;
 #endif
-    } else {
-        srxlTelemetryEnabled = false;
-        srxl2 = false;
-    }
-
-#if defined(USE_SPEKTRUM_CMS_TELEMETRY)
-    if (srxlTelemetryEnabled) {
-        srxlDisplayportRegister();
-    }
-#endif
+  } else {
+    srxlTelemetryEnabled = false;
+    srxl2 = false;
+  }
  }
 
 bool checkSrxlTelemetryState(void)

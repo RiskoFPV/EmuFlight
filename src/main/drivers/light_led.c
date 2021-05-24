@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -26,6 +26,10 @@
 #include "io_impl.h"
 
 #include "light_led.h"
+
+#if defined(USE_BRAINFPV_FPGA)
+#include "fpga_drv.h"
+#endif
 
 PG_REGISTER_WITH_RESET_FN(statusLedConfig_t, statusLedConfig, PG_STATUS_LED_CONFIG, 0);
 
@@ -83,11 +87,28 @@ void ledInit(const statusLedConfig_t *statusLedConfig)
 
 void ledToggle(int led)
 {
+#if defined(USE_BRAINFPV_FPGA) && defined(RADIX)
+    if (led == 0)
+        IOToggle(leds[led]);
+    if (led == 1)
+        BRAINFPVFPGA_AlarmLEDToggle();
+#else
     IOToggle(leds[led]);
+#endif
 }
 
 void ledSet(int led, bool on)
 {
+#if defined(USE_BRAINFPV_FPGA) && defined(RADIX)
+    if (led == 0) {
+        const bool inverted = (1 << (led)) & ledInversion;
+        IOWrite(leds[led], on ? inverted : !inverted);
+    }
+    if (led == 1) {
+        BRAINFPVFPGA_AlarmLED(on);
+    }
+#else
     const bool inverted = (1 << (led)) & ledInversion;
     IOWrite(leds[led], on ? inverted : !inverted);
+#endif
 }

@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -56,27 +56,23 @@ void pgResetFn_rxConfig(rxConfig_t *rxConfig)
         .rssi_offset = 0,
         .rssi_invert = 0,
         .rssi_src_frame_lpf_period = 30,
-        .rcInterpolation = RC_SMOOTHING_MANUAL,
+        .rcInterpolation = RC_SMOOTHING_AUTO,
         .rcInterpolationChannels = INTERPOLATION_CHANNELS_RPYT,
-        .rcInterpolationInterval = 21,
+        .rcInterpolationInterval = 19,
         .fpvCamAngleDegrees = 0,
-        .yawAroundGravity = 0,
         .airModeActivateThreshold = 25,
         .max_aux_channel = DEFAULT_AUX_CHANNEL_COUNT,
         .rc_smoothing_type = RC_SMOOTHING_TYPE_FILTER,
-        .rc_smoothing_input_cutoff = 50,      // automatically calculate the cutoff by default
-        .rc_smoothing_derivative_cutoff = 75, // automatically calculate the cutoff by default
+        .rc_smoothing_input_cutoff = 0,      // automatically calculate the cutoff by default
+        .rc_smoothing_derivative_cutoff = 0, // automatically calculate the cutoff by default
         .rc_smoothing_debug_axis = ROLL,     // default to debug logging for the roll axis
-        .rc_smoothing_auto_factor = 30,
+        .rc_smoothing_input_type = RC_SMOOTHING_INPUT_BIQUAD,
+        .rc_smoothing_derivative_type = RC_SMOOTHING_DERIVATIVE_AUTO, // automatically choose type based on feedforward method
+        .rc_smoothing_auto_factor = 10,
         .srxl2_unit_id = 1,
         .srxl2_baud_fast = true,
         .sbus_baud_fast = false,
         .crsf_use_rx_snr = false,
-        .msp_override_channels_mask = 0,
-        .showAlteredRc = 0,
-        .predictive_rc_cutoff = 25,
-        .predictive_rc_percent = 100,
-        .predictive_rc_time = 50,
     );
 
 #ifdef RX_CHANNELS_TAER

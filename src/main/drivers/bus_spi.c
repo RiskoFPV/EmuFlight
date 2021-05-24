@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -32,8 +32,6 @@
 #include "drivers/exti.h"
 #include "drivers/io.h"
 #include "drivers/rcc.h"
-
-static uint8_t spiRegisteredDeviceCount = 0;
 
 spiDevice_t spiDevice[SPIDEV_COUNT];
 
@@ -189,7 +187,9 @@ bool spiBusWriteRegister(const busDevice_t *bus, uint8_t reg, uint8_t data)
 {
     IOLo(bus->busdev_u.spi.csnPin);
     spiTransferByte(bus->busdev_u.spi.instance, reg);
+    while (spiIsBusBusy(bus->busdev_u.spi.instance)) {};
     spiTransferByte(bus->busdev_u.spi.instance, data);
+    while (spiIsBusBusy(bus->busdev_u.spi.instance)) {};
     IOHi(bus->busdev_u.spi.csnPin);
 
     return true;
@@ -200,6 +200,7 @@ bool spiBusRawReadRegisterBuffer(const busDevice_t *bus, uint8_t reg, uint8_t *d
     IOLo(bus->busdev_u.spi.csnPin);
     spiTransferByte(bus->busdev_u.spi.instance, reg);
     spiTransfer(bus->busdev_u.spi.instance, NULL, data, length);
+    while (spiIsBusBusy(bus->busdev_u.spi.instance)) {};
     IOHi(bus->busdev_u.spi.csnPin);
 
     return true;
@@ -224,6 +225,7 @@ uint8_t spiBusRawReadRegister(const busDevice_t *bus, uint8_t reg)
     IOLo(bus->busdev_u.spi.csnPin);
     spiTransferByte(bus->busdev_u.spi.instance, reg);
     spiTransfer(bus->busdev_u.spi.instance, NULL, &data, 1);
+    while (spiIsBusBusy(bus->busdev_u.spi.instance)) {};
     IOHi(bus->busdev_u.spi.csnPin);
 
     return data;
@@ -238,25 +240,6 @@ void spiBusSetInstance(busDevice_t *bus, SPI_TypeDef *instance)
 {
     bus->bustype = BUSTYPE_SPI;
     bus->busdev_u.spi.instance = instance;
-}
-
-uint16_t spiCalculateDivider(uint32_t freq)
-{
-#if defined(STM32F4) || defined(STM32G4) || defined(STM32F7)
-    uint32_t spiClk = SystemCoreClock / 2;
-#elif defined(STM32H7)
-    uint32_t spiClk = 100000000;
-#else
-#error "Base SPI clock not defined for this architecture"
-#endif
-
-    uint16_t divisor = 2;
-
-    spiClk >>= 1;
-
-    for (; (spiClk > freq) && (divisor < 256); divisor <<= 1, spiClk >>= 1);
-
-    return divisor;
 }
 
 void spiBusSetDivisor(busDevice_t *bus, uint16_t divisor)
@@ -303,16 +286,4 @@ bool spiBusTransactionReadRegisterBuffer(const busDevice_t *bus, uint8_t reg, ui
     return spiBusReadRegisterBuffer(bus, reg, data, length);
 }
 #endif // USE_SPI_TRANSACTION
-
-void spiBusDeviceRegister(const busDevice_t *bus)
-{
-    UNUSED(bus);
-
-    spiRegisteredDeviceCount++;
-}
-
-uint8_t spiGetRegisteredDeviceCount(void)
-{
-    return spiRegisteredDeviceCount;
-}
 #endif

@@ -22,8 +22,6 @@ FC with no PDB aimed at multi-rotor and fixed wing use, Aikon F4 features a care
   - Buttons: Boot
 
 ### Features
-UART3 inverter is controllable by software, you can use the SBUS pad for any unidirectional protocol by setting `serialrx_inverted` accordingly. There's also a solder-jumper to bypass the inverter and connecto UART3_RX to `DSMX` pad directly.
-
 Software serial is preconfigured by default, all you have to do is enable SOFTSERIAL1 for VTX control and SOFTSERIAL2 for ESC sensor on the Ports tab in Configurator.
 
 ## Manufacturers and Distributors

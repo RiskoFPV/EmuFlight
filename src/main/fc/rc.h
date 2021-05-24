@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -34,16 +34,14 @@ typedef enum {
 
 #ifdef USE_RC_SMOOTHING_FILTER
 #define RC_SMOOTHING_AUTO_FACTOR_MIN 0
-#define RC_SMOOTHING_AUTO_FACTOR_MAX 250
+#define RC_SMOOTHING_AUTO_FACTOR_MAX 50
 #endif
 
-void processRcCommand(timeUs_t currentTimeUs);
+void processRcCommand(void);
 float getSetpointRate(int axis);
 float getRcDeflection(int axis);
 float getRcDeflectionAbs(int axis);
-float getThrottlePAttenuation(void);
-float getThrottleIAttenuation(void);
-float getThrottleDAttenuation(void);
+float getThrottlePIDAttenuation(void);
 void updateRcCommands(void);
 void resetYawAxis(void);
 void initRcProcessing(void);
@@ -53,10 +51,9 @@ rcSmoothingFilter_t *getRcSmoothingData(void);
 bool rcSmoothingAutoCalculate(void);
 bool rcSmoothingInitializationComplete(void);
 float getRawSetpoint(int axis);
-float getRcCommandDelta(int axis);
+float getRawDeflection(int axis);
 float applyCurve(int axis, float deflection);
-bool getShouldUpdateFf();
+uint32_t getRcFrameNumber();
+float getRcCurveSlope(int axis, float deflection);
 void updateRcRefreshRate(timeUs_t currentTimeUs);
 uint16_t getCurrentRxRefreshRate(void);
-void updateRcRefreshRate(timeUs_t currentTimeUs);
-float rateDynamics(float rcCommand, int axis, int currentRxRefreshRate);

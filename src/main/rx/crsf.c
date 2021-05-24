@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -68,13 +68,8 @@ static timeUs_t crsfFrameStartAtUs = 0;
 static uint8_t telemetryBuf[CRSF_FRAME_SIZE_MAX];
 static uint8_t telemetryBufLen = 0;
 
+crsfLinkInfo_t crsf_link_info;
 static timeUs_t lastRcFrameTimeUs = 0;
-
-#ifdef USE_RX_LINK_UPLINK_POWER
-#define CRSF_UPLINK_POWER_LEVEL_MW_ITEMS_COUNT 8
-// Uplink power levels by uplinkTXPower expressed in mW (250 mW is from ver >=4.00)
-const uint16_t uplinkTXPowerStatesMw[CRSF_UPLINK_POWER_LEVEL_MW_ITEMS_COUNT] = {0, 10, 25, 100, 500, 1000, 2000, 250};
-#endif
 
 /*
  * CRSF protocol
@@ -136,7 +131,7 @@ typedef struct crsfPayloadRcChannelsPacked_s crsfPayloadRcChannelsPacked_t;
  * int8_t Uplink SNR ( db )
  * uint8_t Diversity active antenna ( enum ant. 1 = 0, ant. 2 )
  * uint8_t RF Mode ( enum 4fps = 0 , 50fps, 150hz)
- * uint8_t Uplink TX Power ( enum 0mW = 0, 10mW, 25 mW, 100 mW, 500 mW, 1000 mW, 2000mW, 250mW )
+ * uint8_t Uplink TX Power ( enum 0mW = 0, 10mW, 25 mW, 100 mW, 500 mW, 1000 mW, 2000mW )
  * uint8_t Downlink RSSI ( dBm * -1 )
  * uint8_t Downlink package success rate / Link quality ( % )
  * int8_t Downlink SNR ( db )
@@ -181,11 +176,6 @@ static void handleCrsfLinkStatisticsFrame(const crsfLinkStatistics_t* statsPtr, 
     }
 #endif
 
-#ifdef USE_RX_LINK_UPLINK_POWER
-    const uint8_t crsfUplinkPowerStatesItemIndex = (stats.uplink_TX_Power < CRSF_UPLINK_POWER_LEVEL_MW_ITEMS_COUNT) ? stats.uplink_TX_Power : 0;
-    rxSetUplinkTxPwrMw(uplinkTXPowerStatesMw[crsfUplinkPowerStatesItemIndex]);
-#endif
-
     switch (debugMode) {
     case DEBUG_CRSF_LINK_STATISTICS_UPLINK:
         DEBUG_SET(DEBUG_CRSF_LINK_STATISTICS_UPLINK, 0, stats.uplink_RSSI_1);
@@ -205,6 +195,52 @@ static void handleCrsfLinkStatisticsFrame(const crsfLinkStatistics_t* statsPtr, 
         break;
     }
 
+    crsf_link_info.lq = stats.uplink_Link_quality;
+    if (stats.rf_Mode == 2) {
+        crsf_link_info.lq *= 3;
+    }
+
+    switch (stats.uplink_TX_Power) {
+        case 0:
+            crsf_link_info.tx_power = 0;
+            break;
+        case 1:
+            crsf_link_info.tx_power = 10;
+            break;
+        case 2:
+            crsf_link_info.tx_power = 25;
+            break;
+        case 3:
+            crsf_link_info.tx_power = 100;
+            break;
+        case 4:
+            crsf_link_info.tx_power = 500;
+            break;
+        case 5:
+            crsf_link_info.tx_power = 1000;
+            break;
+        case 6:
+            crsf_link_info.tx_power = 2000;
+            break;
+        case 7:
+            crsf_link_info.tx_power = 250;
+            break;
+        default:
+            crsf_link_info.tx_power = 0;
+            break;
+    }
+
+    if (stats.uplink_RSSI_1 == 0) {
+        crsf_link_info.rssi = stats.uplink_RSSI_2;
+    }
+    else if (stats.uplink_RSSI_2 == 0) {
+        crsf_link_info.rssi = stats.uplink_RSSI_1;
+    }
+    else {
+        crsf_link_info.rssi = MIN(stats.uplink_RSSI_1, stats.uplink_RSSI_2);
+    }
+
+    crsf_link_info.snr = stats.uplink_SNR;
 }
 #endif
 
@@ -227,6 +263,8 @@ static void crsfCheckRssi(uint32_t currentTimeUs) {
             setLinkQualityDirect(0);
         }
 #endif
+        memset(&crsf_link_info, 0, sizeof(crsf_link_info));
+        crsf_link_info.snr = -20;
     }
 }
 #endif
@@ -356,7 +394,7 @@ STATIC_UNIT_TESTED uint8_t crsfFrameStatus(rxRuntimeState_t *rxRuntimeState)
     return RX_FRAME_PENDING;
 }
 
-STATIC_UNIT_TESTED float crsfReadRawRC(const rxRuntimeState_t *rxRuntimeState, uint8_t chan)
+STATIC_UNIT_TESTED uint16_t crsfReadRawRC(const rxRuntimeState_t *rxRuntimeState, uint8_t chan)
 {
     UNUSED(rxRuntimeState);
     /* conversion from RC value to PWM
@@ -367,7 +405,7 @@ STATIC_UNIT_TESTED float crsfReadRawRC(const rxRuntimeState_t *rxRuntimeState, u
      * scale factor = (2012-988) / (1811-172) = 0.62477120195241
      * offset = 988 - 172 * 0.62477120195241 = 880.53935326418548
      */
-    return (0.62477120195241f * (float)crsfChannelData[chan]) + 881;
+    return (0.62477120195241f * crsfChannelData[chan]) + 881;
 }
 
 void crsfRxWriteTelemetryData(const void *data, int len)

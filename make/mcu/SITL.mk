@@ -35,7 +35,6 @@ MCU_EXCLUDES = \
             drivers/rx/rx_xn297.c \
             drivers/display_ug2864hsweg01.c \
             telemetry/crsf.c \
-            telemetry/ghst.c \
             telemetry/srxl.c \
             io/displayport_oled.c
 

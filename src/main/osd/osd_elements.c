@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -59,45 +59,6 @@
     CLI parameters should be added before line #endif // end of #ifdef USE_OSD
 */
 
-/*
-    *********************
-    OSD element variants:
-    *********************
-
-    Each element can have up to 4 display variants. "Type 1" is always the default and every
-    every element has an implicit type 1 variant even if no additional options exist. The
-    purpose is to allow the user to choose a different element display or rendering style to
-    fit their needs. Like displaying GPS coordinates in a different format, displaying a voltage
-    with a different number of decimal places, etc. The purpose is NOT to display unrelated
-    information in different variants of the element. For example it would be inappropriate
-    to use variants to display RSSI for one type and link quality for another. In this case
-    they should be separate elements. Remember that element variants are mutually exclusive
-    and only one type can be displayed at a time. So they shouldn't be used in cases where
-    the user would want to display different types at the same time - like in the above example
-    where the user might want to display both RSSI and link quality at the same time.
-
-    As variants are added to the firmware, support must also be included in the Configurator.
-
-    The following lists the variants implemented so far (please update this as variants are added):
-
-    OSD_ALTITUDE
-        type 1: Altitude with one decimal place
-        type 2: Altitude with no decimal (whole number only)
-
-    OSD_GPS_LON
-    OSD_GPS_LAT
-        type 1: Decimal representation with 7 digits
-        type 2: Decimal representation with 4 digits
-        type 3: Degrees, minutes, seconds
-        type 4: Open location code (Google Plus Code)
-
-    OSD_MAIN_BATT_USAGE
-        type 1: Graphical bar showing remaining battery (shrinks as used)
-        type 2: Graphical bar showing battery used (grows as used)
-        type 3: Numeric % of remaining battery
-        type 4: Numeric % or used battery
-*/
-
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -120,7 +81,6 @@
 #include "common/printf.h"
 #include "common/typeconversion.h"
 #include "common/utils.h"
-#include "common/unit.h"
 
 #include "config/config.h"
 #include "config/feature.h"
@@ -154,7 +114,6 @@
 #include "osd/osd_elements.h"
 
 #include "pg/motor.h"
-#include "pg/stats.h"
 
 #include "rx/rx.h"
 
@@ -165,10 +124,14 @@
 #include "sensors/esc_sensor.h"
 #include "sensors/sensors.h"
 
-#ifdef USE_GPS_PLUS_CODES
-// located in lib/main/google/olc
-#include "olc.h"
-#endif
+#if defined(USE_BRAINFPV_OSD)
+#include "brainfpv/brainfpv_osd.h"
+extern bool brainfpv_show_crsf_link_info;
+osdElementDrawFn osdElementDrawFunctionRAM[OSD_ITEM_COUNT];
+#define osdElementDrawFunctionUse osdElementDrawFunctionRAM
+#else
+#define osdElementDrawFunctionUse osdElementDrawFunction
+#endif // USE_BRAINFPV_OSD
 
 #define AH_SYMBOL_COUNT 9
 #define AH_SIDEBAR_WIDTH_POS 7
@@ -182,10 +145,6 @@
 
 #define FULL_CIRCLE 360
 #define EFFICIENCY_MINIMUM_SPEED_CM_S 100
-
-#define MOTOR_STOPPED_THRESHOLD_RPM 1000
-
-#define SINE_25_DEG 0.422618261740699f
 
 #ifdef USE_OSD_STICK_OVERLAY
 typedef struct radioControls_s {
@@ -223,14 +182,12 @@ static uint8_t activeOsdElementArray[OSD_ITEM_COUNT];
 static bool backgroundLayerSupported = false;
 
 // Blink control
-static bool blinkState = true;
+bool blinkState = true;
 static uint32_t blinkBits[(OSD_ITEM_COUNT + 31) / 32];
 #define SET_BLINK(item) (blinkBits[(item) / 32] |= (1 << ((item) % 32)))
 #define CLR_BLINK(item) (blinkBits[(item) / 32] &= ~(1 << ((item) % 32)))
 #define IS_BLINK(item) (blinkBits[(item) / 32] & (1 << ((item) % 32)))
 #define BLINK(item) (IS_BLINK(item) && blinkState)
-
-enum {UP, DOWN};
 
 static int osdDisplayWrite(osdElementParms_t *element, uint8_t x, uint8_t y, uint8_t attr, const char *s)
 {
@@ -260,7 +217,7 @@ static int getEscRpm(int i)
     if (motorConfig()->dev.useDshotTelemetry) {
         return 100.0f / (motorConfig()->motorPoleCount / 2.0f) * getDshotTelemetry(i);
     }
-#endif
+#endif 
 #ifdef USE_ESC_SENSOR
     if (featureIsEnabled(FEATURE_ESC_SENSOR)) {
         return calcEscRpm(getEscSensorData(i)->rpm);
@@ -293,7 +250,7 @@ static void renderOsdEscRpmOrFreq(getEscRpmOrFreqFnPtr escFnPtr, osdElementParms
 int osdConvertTemperatureToSelectedUnit(int tempInDegreesCelcius)
 {
     switch (osdConfig()->units) {
-    case UNIT_IMPERIAL:
+    case OSD_UNIT_IMPERIAL:
         return lrintf(((tempInDegreesCelcius * 9.0f) / 5) + 32);
     default:
         return tempInDegreesCelcius;
@@ -301,101 +258,48 @@ int osdConvertTemperatureToSelectedUnit(int tempInDegreesCelcius)
 }
 #endif
 
-static void osdFormatAltitudeString(char * buff, int32_t altitudeCm, osdElementType_e variantType)
+static void osdFormatAltitudeString(char * buff, int32_t altitudeCm)
 {
-    const char unitSymbol = osdGetMetersToSelectedUnitSymbol();
-    unsigned decimalPlaces;
+    const int alt = osdGetMetersToSelectedUnit(altitudeCm) / 10;
 
-    switch (variantType) {
-    case OSD_ELEMENT_TYPE_2:  // whole number altitude (no decimal places)
-        decimalPlaces = 0;
-        break;
-    case OSD_ELEMENT_TYPE_1:  // one decimal place (default)
-    default:
-        decimalPlaces = 1;
-        break;
+    int pos = 0;
+    buff[pos++] = SYM_ALTITUDE;
+    if (alt < 0) {
+        buff[pos++] = '-';
     }
-    osdPrintFloat(buff, SYM_ALTITUDE, osdGetMetersToSelectedUnit(altitudeCm) / 100.0f, "", decimalPlaces, true, unitSymbol);
+    tfp_sprintf(buff + pos, "%01d.%01d%c", abs(alt) / 10 , abs(alt) % 10, osdGetMetersToSelectedUnitSymbol());
 }
 
 #ifdef USE_GPS
-static void osdFormatCoordinate(char *buff, gpsCoordinateType_e coordinateType, osdElementType_e variantType)
+static void osdFormatCoordinate(char *buff, char sym, int32_t val)
 {
-    int32_t gpsValue = 0;
-    const char leadingSymbol = (coordinateType == GPS_LONGITUDE) ? SYM_LON : SYM_LAT;
+    // latitude maximum integer width is 3 (-90).
+    // longitude maximum integer width is 4 (-180).
+    // We show 7 decimals, so we need to use 12 characters:
+    // eg: s-180.1234567z   s=symbol, z=zero terminator, decimal separator  between 0 and 1
 
-    if (STATE(GPS_FIX_EVER)) {  // don't display interim coordinates until we get the first position fix
-        gpsValue = (coordinateType == GPS_LONGITUDE) ? gpsSol.llh.lon : gpsSol.llh.lat;
+    int pos = 0;
+    buff[pos++] = sym;
+    if (val < 0) {
+        buff[pos++] = '-';
+        val = -val;
     }
-
-    const int degreesPart = ABS(gpsValue) / GPS_DEGREES_DIVIDER;
-    int fractionalPart = ABS(gpsValue) % GPS_DEGREES_DIVIDER;
-
-    switch (variantType) {
-#ifdef USE_GPS_PLUS_CODES
-#define PLUS_CODE_DIGITS 11
-    case OSD_ELEMENT_TYPE_4: // Open Location Code
-        {
-            *buff++ = SYM_SAT_L;
-            *buff++ = SYM_SAT_R;
-            if (STATE(GPS_FIX_EVER)) {
-                OLC_LatLon location;
-                location.lat = (double)gpsSol.llh.lat / GPS_DEGREES_DIVIDER;
-                location.lon = (double)gpsSol.llh.lon / GPS_DEGREES_DIVIDER;
-                OLC_Encode(&location, PLUS_CODE_DIGITS, buff, OSD_ELEMENT_BUFFER_LENGTH - 3);
-            } else {
-                memset(buff, SYM_HYPHEN, PLUS_CODE_DIGITS + 1);
-                buff[8] = '+';
-                buff[PLUS_CODE_DIGITS + 1] = '\0';
-            }
-            break;
-        }
-#endif // USE_GPS_PLUS_CODES
-
-    case OSD_ELEMENT_TYPE_3: // degree, minutes, seconds style. ddd^mm'ss.00"W
-        {
-            char trailingSymbol;
-            *buff++ = leadingSymbol;
-
-            const int minutes = fractionalPart * 60 / GPS_DEGREES_DIVIDER;
-            const int fractionalMinutes =  fractionalPart * 60 % GPS_DEGREES_DIVIDER;
-            const int seconds = fractionalMinutes * 60 / GPS_DEGREES_DIVIDER;
-            const int tenthSeconds = (fractionalMinutes * 60 % GPS_DEGREES_DIVIDER) * 10 / GPS_DEGREES_DIVIDER;
-
-            if (coordinateType == GPS_LONGITUDE) {
-                trailingSymbol = (gpsValue < 0) ? 'W' : 'E';
-            } else {
-                trailingSymbol = (gpsValue < 0) ? 'S' : 'N';
-            }
-            tfp_sprintf(buff, "%u%c%02u%c%02u.%u%c%c", degreesPart, SYM_GPS_DEGREE, minutes, SYM_GPS_MINUTE, seconds, tenthSeconds, SYM_GPS_SECOND, trailingSymbol);
-            break;
-        }
-
-    case OSD_ELEMENT_TYPE_2:
-        fractionalPart /= 1000;
-        FALLTHROUGH;
-
-    case OSD_ELEMENT_TYPE_1:
-    default:
-        *buff++ = leadingSymbol;
-        if (gpsValue < 0) {
-            *buff++ = SYM_HYPHEN;
-        }
-        tfp_sprintf(buff, (variantType == OSD_ELEMENT_TYPE_1 ? "%u.%07u" : "%u.%04u"), degreesPart, fractionalPart);
-        break;
-    }
+    tfp_sprintf(buff + pos, "%d.%07d", val / GPS_DEGREES_DIVIDER, val % GPS_DEGREES_DIVIDER);
 }
 #endif // USE_GPS
 
 void osdFormatDistanceString(char *ptr, int distance, char leadingSymbol)
 {
-    const float convertedDistance = osdGetMetersToSelectedUnit(distance);
+    const int convertedDistance = osdGetMetersToSelectedUnit(distance);
     char unitSymbol;
     char unitSymbolExtended;
     int unitTransition;
 
+    if (leadingSymbol != SYM_NONE) {
+        *ptr++ = leadingSymbol;
+    }
     switch (osdConfig()->units) {
-    case UNIT_IMPERIAL:
+    case OSD_UNIT_IMPERIAL:
         unitTransition = 5280;
         unitSymbol = SYM_FT;
         unitSymbolExtended = SYM_MILES;
@@ -407,28 +311,21 @@ void osdFormatDistanceString(char *ptr, int distance, char leadingSymbol)
         break;
     }
 
-    unsigned decimalPlaces;
-    float displayDistance;
-    char displaySymbol;
     if (convertedDistance < unitTransition) {
-        decimalPlaces = 0;
-        displayDistance = convertedDistance;
-        displaySymbol = unitSymbol;
+        tfp_sprintf(ptr, "%d%c", convertedDistance, unitSymbol);
     } else {
-        displayDistance = convertedDistance / unitTransition;
-        displaySymbol = unitSymbolExtended;
-        if (displayDistance >= 10) { // >= 10 miles or km - 1 decimal place
-            decimalPlaces = 1;
+        const int displayDistance = convertedDistance * 100 / unitTransition;
+        if (displayDistance >= 1000) { // >= 10 miles or km - 1 decimal place
+            tfp_sprintf(ptr, "%d.%d%c", displayDistance / 100, (displayDistance / 10) % 10, unitSymbolExtended);
         } else {                     // < 10 miles or km - 2 decimal places
-            decimalPlaces = 2;
+            tfp_sprintf(ptr, "%d.%02d%c", displayDistance / 100, displayDistance % 100, unitSymbolExtended);
         }
     }
-    osdPrintFloat(ptr, leadingSymbol, displayDistance, "", decimalPlaces, false, displaySymbol);
 }
 
 static void osdFormatPID(char * buff, const char * label, const pidf_t * pid)
 {
-    tfp_sprintf(buff, "%s %3d %3d %3d %3d", label, pid->P, pid->I, pid->D, pid->F);
+    tfp_sprintf(buff, "%s %3d %3d %3d", label, pid->P, pid->I, pid->D);
 }
 
 #ifdef USE_RTC_TIME
@@ -561,13 +458,13 @@ static uint8_t osdGetDirectionSymbolFromHeading(int heading)
  * Converts altitude based on the current unit system.
  * @param meters Value in meters to convert
  */
-float osdGetMetersToSelectedUnit(int32_t meters)
+int32_t osdGetMetersToSelectedUnit(int32_t meters)
 {
     switch (osdConfig()->units) {
-    case UNIT_IMPERIAL:
-        return meters * 3.28084f;       // Convert to feet
+    case OSD_UNIT_IMPERIAL:
+        return (meters * 328) / 100; // Convert to feet / 100
     default:
-        return meters;                  // Already in meters
+        return meters;               // Already in metre / 100
     }
 }
 
@@ -577,7 +474,7 @@ float osdGetMetersToSelectedUnit(int32_t meters)
 char osdGetMetersToSelectedUnitSymbol(void)
 {
     switch (osdConfig()->units) {
-    case UNIT_IMPERIAL:
+    case OSD_UNIT_IMPERIAL:
         return SYM_FT;
     default:
         return SYM_M;
@@ -591,8 +488,7 @@ char osdGetMetersToSelectedUnitSymbol(void)
 int32_t osdGetSpeedToSelectedUnit(int32_t value)
 {
     switch (osdConfig()->units) {
-    case UNIT_IMPERIAL:
-    case UNIT_BRITISH:
+    case OSD_UNIT_IMPERIAL:
         return CM_S_TO_MPH(value);
     default:
         return CM_S_TO_KM_H(value);
@@ -605,8 +501,7 @@ int32_t osdGetSpeedToSelectedUnit(int32_t value)
 char osdGetSpeedToSelectedUnitSymbol(void)
 {
     switch (osdConfig()->units) {
-    case UNIT_IMPERIAL:
-    case UNIT_BRITISH:
+    case OSD_UNIT_IMPERIAL:
         return SYM_MPH;
     default:
         return SYM_KPH;
@@ -616,7 +511,7 @@ char osdGetSpeedToSelectedUnitSymbol(void)
 char osdGetVarioToSelectedUnitSymbol(void)
 {
     switch (osdConfig()->units) {
-    case UNIT_IMPERIAL:
+    case OSD_UNIT_IMPERIAL:
         return SYM_FTPS;
     default:
         return SYM_MPS;
@@ -627,7 +522,7 @@ char osdGetVarioToSelectedUnitSymbol(void)
 char osdGetTemperatureSymbolForSelectedUnit(void)
 {
     switch (osdConfig()->units) {
-    case UNIT_IMPERIAL:
+    case OSD_UNIT_IMPERIAL:
         return SYM_F;
     default:
         return SYM_C;
@@ -660,7 +555,7 @@ static void osdElementAltitude(osdElementParms_t *element)
     haveGps = sensors(SENSOR_GPS) && STATE(GPS_FIX);
 #endif // USE_GPS
     if (haveBaro || haveGps) {
-        osdFormatAltitudeString(element->buff, getEstimatedAltitudeCm(), element->type);
+        osdFormatAltitudeString(element->buff, getEstimatedAltitudeCm());
     } else {
         element->buff[0] = SYM_ALTITUDE;
         element->buff[1] = SYM_HYPHEN; // We use this symbol when we don't have a valid measure
@@ -671,8 +566,8 @@ static void osdElementAltitude(osdElementParms_t *element)
 #ifdef USE_ACC
 static void osdElementAngleRollPitch(osdElementParms_t *element)
 {
-    const float angle = ((element->item == OSD_PITCH_ANGLE) ? attitude.values.pitch : attitude.values.roll) / 10.0f;
-    osdPrintFloat(element->buff, (element->item == OSD_PITCH_ANGLE) ? SYM_PITCH : SYM_ROLL, fabsf(angle), ((angle < 0) ? "-%02u" : " %02u"), 1, true, SYM_NONE);
+    const int angle = (element->item == OSD_PITCH_ANGLE) ? attitude.values.pitch : attitude.values.roll;
+    tfp_sprintf(element->buff, "%c%c%02d.%01d", (element->item == OSD_PITCH_ANGLE) ? SYM_PITCH : SYM_ROLL , angle < 0 ? '-' : ' ', abs(angle / 10), abs(angle % 10));
 }
 #endif
 
@@ -709,40 +604,13 @@ static void osdElementArtificialHorizon(osdElementParms_t *element)
 
     element->drawElement = false;  // element already drawn
 }
-
-static void osdElementUpDownReference(osdElementParms_t *element)
-{
-// Up/Down reference feature displays reference points on the OSD at Zenith and Nadir
-    const float earthUpinBodyFrame[3] = {-rMat[2][0], -rMat[2][1], -rMat[2][2]}; //transforum the up vector to the body frame
-
-    if (ABS(earthUpinBodyFrame[2]) < SINE_25_DEG && ABS(earthUpinBodyFrame[1]) < SINE_25_DEG) { 
-        float thetaB; // pitch from body frame to zenith/nadir
-        float psiB; // psi from body frame to zenith/nadir
-        char *symbol[2] = {"U", "D"}; // character buffer
-        int direction;
-
-        if(attitude.values.pitch>0.0){ //nose down
-            thetaB = -earthUpinBodyFrame[2]; // get pitch w/re to nadir (use small angle approx for sine)
-            psiB = -earthUpinBodyFrame[1]; // calculate the yaw w/re to nadir (use small angle approx for sine)
-            direction = DOWN;
-        } else { // nose up
-            thetaB = earthUpinBodyFrame[2]; // get pitch w/re to zenith (use small angle approx for sine)
-            psiB = earthUpinBodyFrame[1]; // calculate the yaw w/re to zenith (use small angle approx for sine)
-            direction = UP;
-        }
-        int posX = element->elemPosX + round(scaleRangef(psiB, -M_PIf / 4, M_PIf / 4, -14, 14));
-        int posY = element->elemPosY + round(scaleRangef(thetaB, -M_PIf / 4, M_PIf / 4, -8, 8));
-
-        osdDisplayWrite(element, posX, posY, DISPLAYPORT_ATTR_NONE, symbol[direction]);
-    }
-    element->drawElement = false;  // element already drawn
-}
 #endif // USE_ACC
 
 static void osdElementAverageCellVoltage(osdElementParms_t *element)
 {
     const int cellV = getBatteryAverageCellVoltage();
-    osdPrintFloat(element->buff, osdGetBatterySymbol(cellV), cellV / 100.0f, "", 2, false, SYM_VOLT);
+    element->buff[0] = osdGetBatterySymbol(cellV);
+    tfp_sprintf(element->buff + 1, "%d.%02d%c", cellV / 100, cellV % 100, SYM_VOLT);
 }
 
 static void osdElementCompassBar(osdElementParms_t *element)
@@ -782,7 +650,7 @@ static void osdBackgroundCameraFrame(osdElementParms_t *element)
     element->drawElement = false;  // element already drawn
 }
 
-static void osdBackgroundCraftName(osdElementParms_t *element)
+void osdBackgroundCraftName(osdElementParms_t *element)
 {
     if (strlen(pilotConfig()->name) == 0) {
         strcpy(element->buff, "CRAFT_NAME");
@@ -853,8 +721,8 @@ static void osdElementCrosshairs(osdElementParms_t *element)
 
 static void osdElementCurrentDraw(osdElementParms_t *element)
 {
-    const float amperage = fabsf(getAmperage() / 100.0f);
-    osdPrintFloat(element->buff, SYM_NONE, amperage, "%3u", 2, false, SYM_AMP);
+    const int32_t amperage = getAmperage();
+    tfp_sprintf(element->buff, "%3d.%02d%c", abs(amperage) / 100, abs(amperage) % 100, SYM_AMP);
 }
 
 static void osdElementDebug(osdElementParms_t *element)
@@ -885,14 +753,6 @@ static void osdBackgroundDisplayName(osdElementParms_t *element)
         element->buff[i] = '\0';
     }
 }
-
-#ifdef USE_PERSISTENT_STATS
-static void osdElementTotalFlights(osdElementParms_t *element)
-{
-    const int32_t total_flights = statsConfig()->stats_total_flights;
-    tfp_sprintf(element->buff, "#%d", total_flights);
-}
-#endif
 
 #ifdef USE_PROFILE_NAMES
 static void osdElementRateProfileName(osdElementParms_t *element)
@@ -982,7 +842,7 @@ static void osdElementFlymode(osdElementParms_t *element)
     //  5. ACRO
 
     if (FLIGHT_MODE(FAILSAFE_MODE)) {
-        strcpy(element->buff, "!FS!");
+        strcpy(element->buff, "*FS*");
     } else if (FLIGHT_MODE(GPS_RESCUE_MODE)) {
         strcpy(element->buff, "RESC");
     } else if (FLIGHT_MODE(HEADFREE_MODE)) {
@@ -991,8 +851,8 @@ static void osdElementFlymode(osdElementParms_t *element)
         strcpy(element->buff, "ANGL");
     } else if (FLIGHT_MODE(HORIZON_MODE)) {
         strcpy(element->buff, "HOR ");
-    } else if (FLIGHT_MODE(NFE_RACE_MODE)) {
-        strcpy(element->buff, "NFE ");
+    } else if (IS_RC_MODE_ACTIVE(BOXACROTRAINER)) {
+        strcpy(element->buff, "ATRN");
     } else if (airmodeIsEnabled()) {
         strcpy(element->buff, "AIR ");
     } else {
@@ -1003,7 +863,8 @@ static void osdElementFlymode(osdElementParms_t *element)
 #ifdef USE_ACC
 static void osdElementGForce(osdElementParms_t *element)
 {
-    osdPrintFloat(element->buff, SYM_NONE, osdGForce, "", 1, true, 'G');
+    const int gForce = lrintf(osdGForce * 10);
+    tfp_sprintf(element->buff, "%01d.%01dG", gForce / 10, gForce % 10);
 }
 #endif // USE_ACC
 
@@ -1048,23 +909,22 @@ static void osdElementGpsHomeDistance(osdElementParms_t *element)
     }
 }
 
-static void osdElementGpsCoordinate(osdElementParms_t *element)
+static void osdElementGpsLatitude(osdElementParms_t *element)
 {
-    const gpsCoordinateType_e coordinateType = (element->item == OSD_GPS_LON) ? GPS_LONGITUDE : GPS_LATITUDE;
-    osdFormatCoordinate(element->buff, coordinateType, element->type);
-    if (STATE(GPS_FIX_EVER) && !STATE(GPS_FIX)) {
-        SET_BLINK(element->item); // blink if we had a fix but have since lost it
-    } else {
-        CLR_BLINK(element->item);
-    }
+    osdFormatCoordinate(element->buff, SYM_LAT, gpsSol.llh.lat);
+}
+
+static void osdElementGpsLongitude(osdElementParms_t *element)
+{
+    osdFormatCoordinate(element->buff, SYM_LON, gpsSol.llh.lon);
 }
 
 static void osdElementGpsSats(osdElementParms_t *element)
 {
-    int pos = tfp_sprintf(element->buff, "%c%c%2d", SYM_SAT_L, SYM_SAT_R, gpsSol.numSat);
-    if (osdConfig()->gps_sats_show_hdop) { // add on the GPS module HDOP estimate
-        element->buff[pos++] = ' ';
-        osdPrintFloat(element->buff + pos, SYM_NONE, gpsSol.hdop / 100.0f, "", 1, true, SYM_NONE);
+    if (osdConfig()->gps_sats_show_hdop) {
+        tfp_sprintf(element->buff, "%c%c%2d %d.%d", SYM_SAT_L, SYM_SAT_R, gpsSol.numSat, gpsSol.hdop / 100, (gpsSol.hdop / 10) % 10);
+    } else {
+        tfp_sprintf(element->buff, "%c%c%2d", SYM_SAT_L, SYM_SAT_R, gpsSol.numSat);
     }
 }
 
@@ -1078,14 +938,14 @@ static void osdElementEfficiency(osdElementParms_t *element)
     int efficiency = 0;
     if (sensors(SENSOR_GPS) && ARMING_FLAG(ARMED) && STATE(GPS_FIX) && gpsSol.groundSpeed >= EFFICIENCY_MINIMUM_SPEED_CM_S) {
         const int speedX100 = osdGetSpeedToSelectedUnit(gpsSol.groundSpeed * 100); // speed * 100 for improved resolution at slow speeds
-
+        
         if (speedX100 > 0) {
             const int mAmperage = getAmperage() * 10; // Current in mA
             efficiency = mAmperage * 100 / speedX100; // mAmperage * 100 to cancel out speed * 100 from above
         }
     }
 
-    const char unitSymbol = osdConfig()->units == UNIT_IMPERIAL ? SYM_MILES : SYM_KM;
+    const char unitSymbol = osdConfig()->units == OSD_UNIT_IMPERIAL ? SYM_MILES : SYM_KM;
     if (efficiency > 0 && efficiency <= 9999) {
         tfp_sprintf(element->buff, "%4d%c/%c", efficiency, SYM_MAH, unitSymbol);
     } else {
@@ -1112,16 +972,13 @@ static void osdBackgroundHorizonSidebars(osdElementParms_t *element)
 }
 
 #ifdef USE_RX_LINK_QUALITY_INFO
-static void osdElementLinkQuality(osdElementParms_t *element)
+void osdElementLinkQuality(osdElementParms_t *element)
 {
     uint16_t osdLinkQuality = 0;
     if (linkQualitySource == LQ_SOURCE_RX_PROTOCOL_CRSF) { // 0-99
         osdLinkQuality = rxGetLinkQuality();
         const uint8_t osdRfMode = rxGetRfMode();
         tfp_sprintf(element->buff, "%c%1d:%2d", SYM_LINK_QUALITY, osdRfMode, osdLinkQuality);
-    } else if (linkQualitySource == LQ_SOURCE_RX_PROTOCOL_GHST) { // 0-100
-        osdLinkQuality = rxGetLinkQuality();
-        tfp_sprintf(element->buff, "%c%2d", SYM_LINK_QUALITY, osdLinkQuality);
     } else { // 0-9
         osdLinkQuality = rxGetLinkQuality() * 10 / LINK_QUALITY_MAX_VALUE;
         if (osdLinkQuality >= 10) {
@@ -1131,18 +988,6 @@ static void osdElementLinkQuality(osdElementParms_t *element)
     }
 }
 #endif // USE_RX_LINK_QUALITY_INFO
-
-#ifdef USE_RX_LINK_UPLINK_POWER
-static void osdElementTxUplinkPower(osdElementParms_t *element)
-{
-    const uint16_t osdUplinkTxPowerMw = rxGetUplinkTxPwrMw();
-    if (osdUplinkTxPowerMw < 1000) {
-        tfp_sprintf(element->buff, "%c%3dMW", SYM_RSSI, osdUplinkTxPowerMw);
-    } else {
-        osdPrintFloat(element->buff, SYM_RSSI, osdUplinkTxPowerMw / 1000.0f, "", 1, false, 'W');
-    }
-}
-#endif // USE_RX_LINK_UPLINK_POWER
 
 #ifdef USE_BLACKBOX
 static void osdElementLogStatus(osdElementParms_t *element)
@@ -1174,64 +1019,35 @@ static void osdElementMainBatteryUsage(osdElementParms_t *element)
     // Set length of indicator bar
     #define MAIN_BATT_USAGE_STEPS 11 // Use an odd number so the bar can be centered.
 
-    const int usedCapacity = getMAhDrawn();
-    int displayBasis = usedCapacity;
+    // Calculate constrained value
+    const float value = constrain(batteryConfig()->batteryCapacity - getMAhDrawn(), 0, batteryConfig()->batteryCapacity);
 
-    switch (element->type) {
-    case OSD_ELEMENT_TYPE_3:  // mAh remaining percentage (counts down as battery is used)
-        displayBasis = constrain(batteryConfig()->batteryCapacity - usedCapacity, 0, batteryConfig()->batteryCapacity);
-        FALLTHROUGH;
+    // Calculate mAh used progress
+    const uint8_t mAhUsedProgress = (batteryConfig()->batteryCapacity) ? ceilf((value / (batteryConfig()->batteryCapacity / MAIN_BATT_USAGE_STEPS))) : 0;
 
-    case OSD_ELEMENT_TYPE_4:  // mAh used percentage (counts up as battery is used)
-        {
-            int displayPercent = 0;
-            if (batteryConfig()->batteryCapacity) {
-                displayPercent = constrain(lrintf(100.0f * displayBasis / batteryConfig()->batteryCapacity), 0, 100);
-            }
-            tfp_sprintf(element->buff, "%c%d%%", SYM_MAH, displayPercent);
-            break;
-        }
-
-    case OSD_ELEMENT_TYPE_2:  // mAh used graphical progress bar (grows as battery is used)
-        displayBasis = constrain(batteryConfig()->batteryCapacity - usedCapacity, 0, batteryConfig()->batteryCapacity);
-        FALLTHROUGH;
-
-    case OSD_ELEMENT_TYPE_1:  // mAh remaining graphical progress bar (shrinks as battery is used)
-    default:
-        {
-            uint8_t remainingCapacityBars = 0;
-
-            if (batteryConfig()->batteryCapacity) {
-                const float batteryRemaining = constrain(batteryConfig()->batteryCapacity - displayBasis, 0, batteryConfig()->batteryCapacity);
-                remainingCapacityBars = ceilf((batteryRemaining / (batteryConfig()->batteryCapacity / MAIN_BATT_USAGE_STEPS)));
-            }
-
-            // Create empty battery indicator bar
-            element->buff[0] = SYM_PB_START;
-            for (int i = 1; i <= MAIN_BATT_USAGE_STEPS; i++) {
-                element->buff[i] = i <= remainingCapacityBars ? SYM_PB_FULL : SYM_PB_EMPTY;
-            }
-            element->buff[MAIN_BATT_USAGE_STEPS + 1] = SYM_PB_CLOSE;
-            if (remainingCapacityBars > 0 && remainingCapacityBars < MAIN_BATT_USAGE_STEPS) {
-                element->buff[1 + remainingCapacityBars] = SYM_PB_END;
-            }
-            element->buff[MAIN_BATT_USAGE_STEPS+2] = '\0';
-            break;
-        }
+    // Create empty battery indicator bar
+    element->buff[0] = SYM_PB_START;
+    for (int i = 1; i <= MAIN_BATT_USAGE_STEPS; i++) {
+        element->buff[i] = i <= mAhUsedProgress ? SYM_PB_FULL : SYM_PB_EMPTY;
     }
+    element->buff[MAIN_BATT_USAGE_STEPS + 1] = SYM_PB_CLOSE;
+    if (mAhUsedProgress > 0 && mAhUsedProgress < MAIN_BATT_USAGE_STEPS) {
+        element->buff[1 + mAhUsedProgress] = SYM_PB_END;
+    }
+    element->buff[MAIN_BATT_USAGE_STEPS+2] = '\0';
 }
 
 static void osdElementMainBatteryVoltage(osdElementParms_t *element)
 {
-    unsigned decimalPlaces;
-    const float batteryVoltage = getBatteryVoltage() / 100.0f;
+    int batteryVoltage = getBatteryVoltage();
 
-    if (batteryVoltage >= 10) { // if voltage is 10v or more then display only 1 decimal place
-        decimalPlaces = 1;
+    element->buff[0] = osdGetBatterySymbol(getBatteryAverageCellVoltage());
+    if (batteryVoltage >= 1000) {
+        batteryVoltage = (batteryVoltage + 5) / 10;
+        tfp_sprintf(element->buff + 1, "%d.%d%c", batteryVoltage / 10, batteryVoltage % 10, SYM_VOLT);
     } else {
-        decimalPlaces = 2;
+        tfp_sprintf(element->buff + 1, "%d.%02d%c", batteryVoltage / 100, batteryVoltage % 100, SYM_VOLT);
     }
-    osdPrintFloat(element->buff, osdGetBatterySymbol(getBatteryAverageCellVoltage()), batteryVoltage, "", decimalPlaces, true, SYM_VOLT);
 }
 
 static void osdElementMotorDiagnostics(osdElementParms_t *element)
@@ -1240,13 +1056,7 @@ static void osdElementMotorDiagnostics(osdElementParms_t *element)
     const bool motorsRunning = areMotorsRunning();
     for (; i < getMotorCount(); i++) {
         if (motorsRunning) {
-            element->buff[i] =  0x88 - scaleRange(motor[i], getMotorOutputLow(), getMotorOutputHigh(), 0, 8);
-#if defined(USE_ESC_SENSOR) || defined(USE_DSHOT_TELEMETRY)
-            if (getEscRpm(i) < MOTOR_STOPPED_THRESHOLD_RPM) {
-                // Motor is not spinning properly. Mark as Stopped
-                element->buff[i] = 'S';
-            }
-#endif
+            element->buff[i] =  0x88 - scaleRange(motor[i], motorOutputLow, motorOutputHigh, 0, 8);
         } else {
             element->buff[i] =  0x88;
         }
@@ -1272,9 +1082,9 @@ static void osdElementNumericalVario(osdElementParms_t *element)
     haveGps = sensors(SENSOR_GPS) && STATE(GPS_FIX);
 #endif // USE_GPS
     if (haveBaro || haveGps) {
-        const float verticalSpeed = osdGetMetersToSelectedUnit(getEstimatedVario()) / 100.0f;
+        const int verticalSpeed = osdGetMetersToSelectedUnit(getEstimatedVario());
         const char directionSymbol = verticalSpeed < 0 ? SYM_ARROW_SMALL_DOWN : SYM_ARROW_SMALL_UP;
-        osdPrintFloat(element->buff, directionSymbol, fabsf(verticalSpeed), "", 1, true, osdGetVarioToSelectedUnitSymbol());
+        tfp_sprintf(element->buff, "%c%01d.%01d%c", directionSymbol, abs(verticalSpeed / 100), abs((verticalSpeed % 100) / 10), osdGetVarioToSelectedUnitSymbol());
     } else {
         // We use this symbol when we don't have a valid measure
         element->buff[0] = SYM_HYPHEN;
@@ -1342,7 +1152,7 @@ static void osdElementRemainingTimeEstimate(osdElementParms_t *element)
     }
 }
 
-static void osdElementRssi(osdElementParms_t *element)
+void osdElementRssi(osdElementParms_t *element)
 {
     uint16_t osdRssi = getRssi() * 100 / 1024; // change range
     if (osdRssi >= 100) {
@@ -1561,7 +1371,18 @@ static void osdElementWarnings(osdElementParms_t *element)
 #endif // USE_LAUNCH_CONTROL
 
     // RSSI
+#if defined(USE_BRAINFPV_OSD)
+    bool rssi_warning;
+    if (brainfpv_show_crsf_link_info) {
+        rssi_warning = osdWarnGetState(OSD_WARNING_RSSI) && (rxGetLinkQualityPercent() < osdConfig()->rssi_alarm);
+    }
+    else {
+        rssi_warning = osdWarnGetState(OSD_WARNING_RSSI) && (getRssiPercent() < osdConfig()->rssi_alarm);
+    }
+    if (rssi_warning) {
+#else
     if (osdWarnGetState(OSD_WARNING_RSSI) && (getRssiPercent() < osdConfig()->rssi_alarm)) {
+#endif
         tfp_sprintf(element->buff, "RSSI LOW");
         element->attr = DISPLAYPORT_ATTR_WARNING;
         SET_BLINK(OSD_WARNINGS);
@@ -1627,12 +1448,6 @@ static void osdElementWarnings(osdElementParms_t *element)
         tfp_sprintf(element->buff, "HEADFREE");
         element->attr = DISPLAYPORT_ATTR_WARNING;
         SET_BLINK(OSD_WARNINGS);
-        return;
-    }
-
-    if (isLevelRecoveryActive() && osdWarnGetState(OSD_WARNING_LEVEL_RECOVERY)) {
-        tfp_sprintf(element->buff, "ACC RECOVERY");
-        element->attr = DISPLAYPORT_ATTR_WARNING;
         return;
     }
 
@@ -1752,7 +1567,6 @@ static const uint8_t osdElementDisplayOrder[] = {
     OSD_RSSI_VALUE,
     OSD_CROSSHAIRS,
     OSD_HORIZON_SIDEBARS,
-    OSD_UP_DOWN_REFERENCE,
     OSD_ITEM_TIMER_1,
     OSD_ITEM_TIMER_2,
     OSD_REMAINING_TIME_ESTIMATE,
@@ -1801,9 +1615,6 @@ static const uint8_t osdElementDisplayOrder[] = {
 #ifdef USE_RX_LINK_QUALITY_INFO
     OSD_LINK_QUALITY,
 #endif
-#ifdef USE_RX_LINK_UPLINK_POWER
-    OSD_TX_UPLINK_POWER,
-#endif
 #ifdef USE_RX_RSSI_DBM
     OSD_RSSI_DBM_VALUE,
 #endif
@@ -1820,23 +1631,19 @@ static const uint8_t osdElementDisplayOrder[] = {
 #endif
     OSD_RC_CHANNELS,
     OSD_CAMERA_FRAME,
-#ifdef USE_PERSISTENT_STATS
-    OSD_TOTAL_FLIGHTS,
-#endif
 };
 
 // Define the mapping between the OSD element id and the function to draw it
 
 const osdElementDrawFn osdElementDrawFunction[OSD_ITEM_COUNT] = {
-    [OSD_CAMERA_FRAME]            = NULL,  // only has background. Added first so it's the lowest "layer" and doesn't cover other elements
     [OSD_RSSI_VALUE]              = osdElementRssi,
     [OSD_MAIN_BATT_VOLTAGE]       = osdElementMainBatteryVoltage,
-    [OSD_CROSSHAIRS]              = osdElementCrosshairs,  // only has background, but needs to be over other elements (like artificial horizon)
+    [OSD_CROSSHAIRS]              = osdElementCrosshairs,
+    [OSD_CAMERA_FRAME]            = NULL,  // only has background. Added first so it's the lowest "layer" and doesn't cover other elements
 #ifdef USE_ACC
     [OSD_ARTIFICIAL_HORIZON]      = osdElementArtificialHorizon,
-    [OSD_UP_DOWN_REFERENCE]       = osdElementUpDownReference,
 #endif
-    [OSD_HORIZON_SIDEBARS]        = NULL,  // only has background
+    [OSD_HORIZON_SIDEBARS]        =  NULL,  // only has background
     [OSD_ITEM_TIMER_1]            = osdElementTimer,
     [OSD_ITEM_TIMER_2]            = osdElementTimer,
     [OSD_FLYMODE]                 = osdElementFlymode,
@@ -1860,8 +1667,8 @@ const osdElementDrawFn osdElementDrawFunction[OSD_ITEM_COUNT] = {
     [OSD_WARNINGS]                = osdElementWarnings,
     [OSD_AVG_CELL_VOLTAGE]        = osdElementAverageCellVoltage,
 #ifdef USE_GPS
-    [OSD_GPS_LON]                 = osdElementGpsCoordinate,
-    [OSD_GPS_LAT]                 = osdElementGpsCoordinate,
+    [OSD_GPS_LON]                 = osdElementGpsLongitude,
+    [OSD_GPS_LAT]                 = osdElementGpsLatitude,
 #endif
     [OSD_DEBUG]                   = osdElementDebug,
 #ifdef USE_ACC
@@ -1909,9 +1716,6 @@ const osdElementDrawFn osdElementDrawFunction[OSD_ITEM_COUNT] = {
 #ifdef USE_RX_LINK_QUALITY_INFO
     [OSD_LINK_QUALITY]            = osdElementLinkQuality,
 #endif
-#ifdef USE_RX_LINK_UPLINK_POWER
-    [OSD_TX_UPLINK_POWER]         = osdElementTxUplinkPower,
-#endif
 #ifdef USE_GPS
     [OSD_FLIGHT_DIST]             = osdElementGpsFlightDistance,
 #endif
@@ -1936,9 +1740,6 @@ const osdElementDrawFn osdElementDrawFunction[OSD_ITEM_COUNT] = {
     [OSD_RC_CHANNELS]             = osdElementRcChannels,
 #ifdef USE_GPS
     [OSD_EFFICIENCY]              = osdElementEfficiency,
-#endif
-#ifdef USE_PERSISTENT_STATS
-    [OSD_TOTAL_FLIGHTS]   = osdElementTotalFlights,
 #endif
 };
 
@@ -1974,7 +1775,6 @@ void osdAddActiveElements(void)
     if (sensors(SENSOR_ACC)) {
         osdAddActiveElement(OSD_ARTIFICIAL_HORIZON);
         osdAddActiveElement(OSD_G_FORCE);
-        osdAddActiveElement(OSD_UP_DOWN_REFERENCE);
     }
 #endif
 
@@ -2006,15 +1806,11 @@ void osdAddActiveElements(void)
         osdAddActiveElement(OSD_ESC_RPM_FREQ);
     }
 #endif
-
-#ifdef USE_PERSISTENT_STATS
-    osdAddActiveElement(OSD_TOTAL_FLIGHTS);
-#endif
 }
 
 static void osdDrawSingleElement(displayPort_t *osdDisplayPort, uint8_t item)
 {
-    if (!osdElementDrawFunction[item]) {
+    if (!osdElementDrawFunctionUse[item]) {
         // Element has no drawing function
         return;
     }
@@ -2030,14 +1826,13 @@ static void osdDrawSingleElement(displayPort_t *osdDisplayPort, uint8_t item)
     element.item = item;
     element.elemPosX = elemPosX;
     element.elemPosY = elemPosY;
-    element.type = OSD_TYPE(osdElementConfig()->item_pos[item]);
     element.buff = (char *)&buff;
     element.osdDisplayPort = osdDisplayPort;
     element.drawElement = true;
     element.attr = DISPLAYPORT_ATTR_NONE;
 
     // Call the element drawing function
-    osdElementDrawFunction[item](&element);
+    osdElementDrawFunctionUse[item](&element);
     if (element.drawElement) {
         osdDisplayWrite(&element, elemPosX, elemPosY, element.attr, buff);
     }
@@ -2058,7 +1853,6 @@ static void osdDrawSingleElementBackground(displayPort_t *osdDisplayPort, uint8_
     element.item = item;
     element.elemPosX = elemPosX;
     element.elemPosY = elemPosY;
-    element.type = OSD_TYPE(osdElementConfig()->item_pos[item]);
     element.buff = (char *)&buff;
     element.osdDisplayPort = osdDisplayPort;
     element.drawElement = true;
@@ -2070,12 +1864,8 @@ static void osdDrawSingleElementBackground(displayPort_t *osdDisplayPort, uint8_
     }
 }
 
-#define OSD_BLINK_FREQUENCY_HZ 2.5f
-
-void osdDrawActiveElements(displayPort_t *osdDisplayPort)
+void osdDrawActiveElements(displayPort_t *osdDisplayPort, timeUs_t currentTimeUs)
 {
-    static unsigned blinkLoopCounter = 0;
-
 #ifdef USE_GPS
     static bool lastGpsSensorState;
     // Handle the case that the GPS_SENSOR may be delayed in activation
@@ -2087,11 +1877,7 @@ void osdDrawActiveElements(displayPort_t *osdDisplayPort)
     }
 #endif // USE_GPS
 
-    // synchronize the blinking with the OSD task loop
-    if (++blinkLoopCounter >= lrintf(osdConfig()->task_frequency / OSD_DRAW_FREQ_DENOM / (OSD_BLINK_FREQUENCY_HZ * 2))) {
-        blinkState = !blinkState;
-        blinkLoopCounter = 0;
-    }
+    blinkState = (currentTimeUs / 200000) % 2;
 
     for (unsigned i = 0; i < activeOsdElementCount; i++) {
         if (!backgroundLayerSupported) {
@@ -2119,6 +1905,20 @@ void osdElementsInit(bool backgroundLayerFlag)
 {
     backgroundLayerSupported = backgroundLayerFlag;
     activeOsdElementCount = 0;
+
+#if defined(USE_BRAINFPV_OSD)
+    // Copy elements to RAM and overwrite BrainFPV ones if OSD is active
+    memcpy(osdElementDrawFunctionRAM, osdElementDrawFunction, sizeof(osdElementDrawFunctionRAM));
+    if (VideoIsInitialized()) {
+        osdElementDrawFunctionRAM[OSD_RSSI_VALUE] = osdElementRssi_BrainFPV;
+        osdElementDrawFunctionRAM[OSD_CROSSHAIRS] = osdElementCrosshairs_BrainFPV;
+        osdElementDrawFunctionRAM[OSD_ARTIFICIAL_HORIZON] = osdElementArtificialHorizon_BrainFPV;
+        osdElementDrawFunctionRAM[OSD_CRAFT_NAME] = osdElementCraftName_BrainFPV;
+        osdElementDrawFunctionRAM[OSD_HOME_DIR] = osdElementCraftName_BrainFPV;
+        osdElementDrawFunctionRAM[OSD_LINK_QUALITY] = osdElementLinkQuality_BrainFPV;
+
+    }
+#endif
 }
 
 void osdResetAlarms(void)
@@ -2132,7 +1932,23 @@ void osdUpdateAlarms(void)
 
     int32_t alt = osdGetMetersToSelectedUnit(getEstimatedAltitudeCm()) / 100;
 
+#if defined(USE_BRAINFPV_OSD)
+    // If we use the CRSF widget for the RSSI field, use LQ for blinking
+    bool blink_rssi = false;
+    if (brainfpv_show_crsf_link_info) {
+        if (rxGetLinkQualityPercent() < osdConfig()->rssi_alarm) {
+            blink_rssi = true;
+        }
+    }
+    else {
+        if (getRssiPercent() < osdConfig()->rssi_alarm) {
+            blink_rssi = true;
+        }
+    }
+    if (blink_rssi) {
+#else
     if (getRssiPercent() < osdConfig()->rssi_alarm) {
+#endif
         SET_BLINK(OSD_RSSI_VALUE);
     } else {
         CLR_BLINK(OSD_RSSI_VALUE);
@@ -2235,8 +2051,7 @@ bool osdElementsNeedAccelerometer(void)
            osdElementIsActive(OSD_PITCH_ANGLE) ||
            osdElementIsActive(OSD_ROLL_ANGLE) ||
            osdElementIsActive(OSD_G_FORCE) ||
-           osdElementIsActive(OSD_FLIP_ARROW) ||
-           osdElementIsActive(OSD_UP_DOWN_REFERENCE);
+           osdElementIsActive(OSD_FLIP_ARROW);
 }
 
 #endif // USE_ACC

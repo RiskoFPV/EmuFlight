@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -43,8 +43,9 @@
 #include "cms/cms_menu_power.h"
 #include "cms/cms_menu_saveexit.h"
 
-#ifdef USE_PERSISTENT_STATS
-#include "cms/cms_menu_persistent_stats.h"
+
+#if defined(USE_BRAINFPV_OSD)
+#include "cms/cms_menu_brainfpv.h"
 #endif
 
 // VTX supplied menus
@@ -92,9 +93,6 @@ static const OSD_Entry menuFeaturesEntries[] =
     {"POWER", OME_Submenu, cmsMenuChange, &cmsx_menuPower, 0},
 #ifdef USE_CMS_FAILSAFE_MENU
     {"FAILSAFE", OME_Submenu, cmsMenuChange, &cmsx_menuFailsafe, 0},
-#endif
-#ifdef USE_PERSISTENT_STATS
-    {"PERSISTENT STATS", OME_Submenu, cmsMenuChange, &cmsx_menuPersistentStats, 0},
 #endif
     {"BACK", OME_Back, NULL, NULL, 0},
     {NULL, OME_END, NULL, NULL, 0}
@@ -182,6 +180,10 @@ static const void *mainMenuOnEnter(displayPort_t *pDisp)
 static const OSD_Entry menuMainEntries[] =
 {
     {"-- MAIN --",  OME_Label, NULL, NULL, 0},
+
+#if defined(USE_BRAINFPV_OSD)
+    {"BRAINFPV", OME_Submenu, cmsMenuChange, &cmsx_menuBrainFPV, 0},
+#endif
 
     {"PROFILE",     OME_Submenu,  cmsMenuChange, &cmsx_menuImu, 0},
     {"FEATURES",    OME_Submenu,  cmsMenuChange, &cmsx_menuFeatures, 0},

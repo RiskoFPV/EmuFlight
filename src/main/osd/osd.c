@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -49,7 +49,6 @@
 #include "common/printf.h"
 #include "common/typeconversion.h"
 #include "common/utils.h"
-#include "common/unit.h"
 
 #include "config/feature.h"
 
@@ -94,6 +93,12 @@
 
 #ifdef USE_HARDWARE_REVISION_DETECTION
 #include "hardware_revision.h"
+#endif
+
+#ifdef USE_BRAINFPV_OSD
+#include "brainfpv/brainfpv_osd.h"
+extern bool osdArming;
+static bool useBrainFPVOSD = false;
 #endif
 
 typedef enum {
@@ -145,7 +150,7 @@ escSensorData_t *osdEscDataCombined;
 
 STATIC_ASSERT(OSD_POS_MAX == OSD_POS(31,31), OSD_POS_MAX_incorrect);
 
-PG_REGISTER_WITH_RESET_FN(osdConfig_t, osdConfig, PG_OSD_CONFIG, 9);
+PG_REGISTER_WITH_RESET_FN(osdConfig_t, osdConfig, PG_OSD_CONFIG, 8);
 
 PG_REGISTER_WITH_RESET_FN(osdElementConfig_t, osdElementConfig, PG_OSD_ELEMENT_CONFIG, 0);
 
@@ -185,45 +190,6 @@ const osd_stats_e osdStatsDisplayOrder[OSD_STAT_COUNT] = {
     OSD_STAT_TOTAL_TIME,
     OSD_STAT_TOTAL_DIST,
 };
-
-// Format a float to the specified number of decimal places with optional rounding.
-// OSD symbols can optionally be placed before and after the formatted number (use SYM_NONE for no symbol).
-// The formatString can be used for customized formatting of the integer part. Follow the printf style.
-// Pass an empty formatString for default.
-int osdPrintFloat(char *buffer, char leadingSymbol, float value, char *formatString, unsigned decimalPlaces, bool round, char trailingSymbol)
-{
-    char mask[7];
-    int pos = 0;
-    int multiplier = 1;
-    for (unsigned i = 0; i < decimalPlaces; i++) {
-        multiplier *= 10;
-    }
-
-    value *= multiplier;
-    const int scaledValueAbs = ABS(round ? lrintf(value) : value);
-    const int integerPart = scaledValueAbs / multiplier;
-    const int fractionalPart = scaledValueAbs % multiplier;
-
-    if (leadingSymbol != SYM_NONE) {
-        buffer[pos++] = leadingSymbol;
-    }
-    if (value < 0 && (integerPart || fractionalPart)) {
-        buffer[pos++] = '-';
-    }
-
-    pos += tfp_sprintf(buffer + pos, (strlen(formatString) ? formatString : "%01u"), integerPart);
-    if (decimalPlaces) {
-        tfp_sprintf((char *)&mask, ".%%0%uu", decimalPlaces); // builds up the format string to be like ".%03u" for decimalPlaces == 3 as an example
-        pos += tfp_sprintf(buffer + pos, mask, fractionalPart);
-    }
-
-    if (trailingSymbol != SYM_NONE) {
-        buffer[pos++] = trailingSymbol;
-    }
-    buffer[pos] = '\0';
-
-    return pos;
-}
 
 void osdStatSetState(uint8_t statIndex, bool enabled)
 {
@@ -289,7 +255,7 @@ void osdAnalyzeActiveElements(void)
     osdDrawActiveElementsBackground(osdDisplayPort);
 }
 
-static void osdDrawElements(void)
+static void osdDrawElements(timeUs_t currentTimeUs)
 {
     // Hide OSD when OSDSW mode is active
     if (IS_RC_MODE_ACTIVE(BOXOSD)) {
@@ -307,7 +273,7 @@ static void osdDrawElements(void)
         displayClearScreen(osdDisplayPort);
     }
 
-    osdDrawActiveElements(osdDisplayPort);
+    osdDrawActiveElements(osdDisplayPort, currentTimeUs);
 }
 
 const uint16_t osdTimerDefault[OSD_TIMER_COUNT] = {
@@ -328,7 +294,7 @@ void pgResetFn_osdConfig(osdConfig_t *osdConfig)
     osdStatSetState(OSD_STAT_BLACKBOX_NUMBER, true);
     osdStatSetState(OSD_STAT_TIMER_2, true);
 
-    osdConfig->units = UNIT_METRIC;
+    osdConfig->units = OSD_UNIT_METRIC;
 
     // Enable all warnings by default
     for (int i=0; i < OSD_WARNING_COUNT; i++) {
@@ -373,15 +339,16 @@ void pgResetFn_osdConfig(osdConfig_t *osdConfig)
     osdConfig->displayPortDevice = OSD_DISPLAYPORT_DEVICE_AUTO;
 
     osdConfig->distance_alarm = 0;
+#if defined(USE_BRAINFPV_OSD)
+    osdConfig->logo_on_arming = OSD_LOGO_ARMING_ON;
+    osdConfig->logo_on_arming_duration = 10;  // 1.0 seconds
+#else
     osdConfig->logo_on_arming = OSD_LOGO_ARMING_OFF;
     osdConfig->logo_on_arming_duration = 5;  // 0.5 seconds
+#endif
 
     osdConfig->camera_frame_width = 24;
     osdConfig->camera_frame_height = 11;
-
-    osdConfig->stat_show_cell_value = false;
-    osdConfig->task_frequency = OSD_TASK_FREQUENCY_DEFAULT;
-    osdConfig->cms_background_type = DISPLAY_BACKGROUND_BLACK;
 }
 
 void pgResetFn_osdElementConfig(osdElementConfig_t *osdElementConfig)
@@ -403,7 +370,20 @@ void pgResetFn_osdElementConfig(osdElementConfig_t *osdElementConfig)
     osdElementConfig->item_pos[OSD_ARTIFICIAL_HORIZON] = OSD_POS(14, 2);
     osdElementConfig->item_pos[OSD_HORIZON_SIDEBARS]   = OSD_POS(14, 6);
     osdElementConfig->item_pos[OSD_CAMERA_FRAME]       = OSD_POS(3, 1);
-    osdElementConfig->item_pos[OSD_UP_DOWN_REFERENCE]  = OSD_POS(13, 6);
+
+#ifdef USE_BRAINFPV_OSD
+    osdElementConfig->item_pos[OSD_RSSI_VALUE]         = OSD_POS(8, 1)   | profileFlags;
+    osdElementConfig->item_pos[OSD_MAIN_BATT_VOLTAGE]  = OSD_POS(12, 1)  | profileFlags;
+    osdElementConfig->item_pos[OSD_CROSSHAIRS]         = OSD_POS(13, 6)   | profileFlags;
+    osdElementConfig->item_pos[OSD_ITEM_TIMER_1]       = OSD_POS(22, 1)  | profileFlags;
+    osdElementConfig->item_pos[OSD_ITEM_TIMER_2]       = OSD_POS(1, 1)   | profileFlags;
+    osdElementConfig->item_pos[OSD_FLYMODE]            = OSD_POS(1, 2)   | profileFlags;
+    osdElementConfig->item_pos[OSD_CRAFT_NAME]         = OSD_POS(10, 11) | profileFlags;
+    osdElementConfig->item_pos[OSD_CURRENT_DRAW]       = OSD_POS(1, 11)  | profileFlags;
+    osdElementConfig->item_pos[OSD_MAH_DRAWN]          = OSD_POS(1, 10)  | profileFlags;
+    osdElementConfig->item_pos[OSD_AVG_CELL_VOLTAGE]   = OSD_POS(12, 2)  | profileFlags;
+#endif
+
 }
 
 static void osdDrawLogo(int x, int y)
@@ -468,14 +448,25 @@ void osdInit(displayPort_t *osdDisplayPortToUse, osdDisplayPortDevice_e displayP
         return;
     }
 
+#ifdef USE_BRAINFPV_OSD
+    if (VideoIsInitialized()) {
+        useBrainFPVOSD = true;
+    }
+#endif
+
     osdDisplayPort = osdDisplayPortToUse;
 #ifdef USE_CMS
     cmsDisplayPortRegister(osdDisplayPort);
 #endif
 
-    if (displayCheckReady(osdDisplayPort, true)) {
+    if (displayIsReady(osdDisplayPort)) {
         osdCompleteInitialization();
     }
+}
+
+bool osdInitialized(void)
+{
+    return osdDisplayPort;
 }
 
 static void osdResetStats(void)
@@ -491,7 +482,7 @@ static void osdResetStats(void)
     stats.max_g_force  = 0;
     stats.max_esc_temp = 0;
     stats.max_esc_rpm  = 0;
-    stats.min_link_quality = (linkQualitySource == LQ_SOURCE_NONE) ? 99 : 100; // percent
+    stats.min_link_quality =  (linkQualitySource == LQ_SOURCE_RX_PROTOCOL_CRSF) ? 100 : 99; // percent
     stats.min_rssi_dbm = CRSF_SNR_MAX;
 }
 
@@ -517,11 +508,6 @@ static int32_t getAverageEscRpm(void)
 }
 #endif
 
-static uint16_t getStatsVoltage(void)
-{
-    return osdConfig()->stat_show_cell_value ? getBatteryAverageCellVoltage() : getBatteryVoltage();
-}
-
 static void osdUpdateStats(void)
 {
     int16_t value = 0;
@@ -537,7 +523,7 @@ static void osdUpdateStats(void)
     }
 #endif
 
-    value = getStatsVoltage();
+    value = getBatteryVoltage();
     if (stats.min_voltage > value) {
         stats.min_voltage = value;
     }
@@ -697,7 +683,8 @@ static bool osdDisplayStat(int statistic, uint8_t displayRow)
         return true;
 
     case OSD_STAT_MAX_ALTITUDE: {
-        osdPrintFloat(buff, SYM_NONE, osdGetMetersToSelectedUnit(stats.max_altitude) / 100.0f, "", 1, true, osdGetMetersToSelectedUnitSymbol());
+        const int alt = osdGetMetersToSelectedUnit(stats.max_altitude) / 10;
+        tfp_sprintf(buff, "%d.%d%c", alt / 10, alt % 10, osdGetMetersToSelectedUnitSymbol());
         osdDisplayStatisticLabel(displayRow, "MAX ALTITUDE", buff);
         return true;
     }
@@ -730,23 +717,19 @@ static bool osdDisplayStat(int statistic, uint8_t displayRow)
 #endif
 
     case OSD_STAT_MIN_BATTERY:
-        osdPrintFloat(buff, SYM_NONE, stats.min_voltage / 100.0f, "", 2, true, SYM_VOLT);
-        osdDisplayStatisticLabel(displayRow, osdConfig()->stat_show_cell_value? "MIN AVG CELL" : "MIN BATTERY", buff);
+        tfp_sprintf(buff, "%d.%02d%c", stats.min_voltage / 100, stats.min_voltage % 100, SYM_VOLT);
+        osdDisplayStatisticLabel(displayRow, "MIN BATTERY", buff);
         return true;
 
     case OSD_STAT_END_BATTERY:
-        osdPrintFloat(buff, SYM_NONE, stats.end_voltage / 100.0f, "", 2, true, SYM_VOLT);
-        osdDisplayStatisticLabel(displayRow, osdConfig()->stat_show_cell_value ? "END AVG CELL" : "END BATTERY", buff);
+        tfp_sprintf(buff, "%d.%02d%c", stats.end_voltage / 100, stats.end_voltage % 100, SYM_VOLT);
+        osdDisplayStatisticLabel(displayRow, "END BATTERY", buff);
         return true;
 
     case OSD_STAT_BATTERY:
-        {
-            const uint16_t statsVoltage = getStatsVoltage();
-            osdPrintFloat(buff, SYM_NONE, statsVoltage / 100.0f, "", 2, true, SYM_VOLT);
-            osdDisplayStatisticLabel(displayRow, osdConfig()->stat_show_cell_value ? "AVG BATT CELL" : "BATTERY", buff);
-            return true;
-        }
-        break;
+        tfp_sprintf(buff, "%d.%02d%c", getBatteryVoltage() / 100, getBatteryVoltage() % 100, SYM_VOLT);
+        osdDisplayStatisticLabel(displayRow, "BATTERY", buff);
+        return true;
 
     case OSD_STAT_MIN_RSSI:
         itoa(stats.min_rssi, buff, 10);
@@ -794,7 +777,8 @@ static bool osdDisplayStat(int statistic, uint8_t displayRow)
 #if defined(USE_ACC)
     case OSD_STAT_MAX_G_FORCE:
         if (sensors(SENSOR_ACC)) {
-            osdPrintFloat(buff, SYM_NONE, stats.max_g_force, "", 1, true, 'G');
+            const int gForce = lrintf(stats.max_g_force * 10);
+            tfp_sprintf(buff, "%01d.%01dG", gForce / 10, gForce % 10);
             osdDisplayStatisticLabel(displayRow, "MAX G-FORCE", buff);
             return true;
         }
@@ -861,7 +845,7 @@ static bool osdDisplayStat(int statistic, uint8_t displayRow)
     case OSD_STAT_TOTAL_DIST:
         #define METERS_PER_KILOMETER 1000
         #define METERS_PER_MILE      1609
-        if (osdConfig()->units == UNIT_IMPERIAL) {
+        if (osdConfig()->units == OSD_UNIT_IMPERIAL) {
             tfp_sprintf(buff, "%d%c", statsConfig()->stats_total_dist_m / METERS_PER_MILE, SYM_MILES);
         } else {
             tfp_sprintf(buff, "%d%c", statsConfig()->stats_total_dist_m / METERS_PER_KILOMETER, SYM_KM);
@@ -917,28 +901,39 @@ static void osdRefreshStats(void)
     osdShowStats(osdStatsRowCount);
 }
 
-static timeDelta_t osdShowArmed(void)
+timeDelta_t osdShowArmed(void)
 {
     timeDelta_t ret;
 
     displayClearScreen(osdDisplayPort);
 
     if ((osdConfig()->logo_on_arming == OSD_LOGO_ARMING_ON) || ((osdConfig()->logo_on_arming == OSD_LOGO_ARMING_FIRST) && !ARMING_FLAG(WAS_EVER_ARMED))) {
+#if defined(USE_BRAINFPV_OSD)
+#define GY (GRAPHICS_BOTTOM / 2 - 30)
+        if (useBrainFPVOSD) {
+            brainFpvOsdMainLogo(GRAPHICS_X_MIDDLE, GY);
+        }
+        else {
+            osdDrawLogo(3, 1);
+        }
+#else
         osdDrawLogo(3, 1);
+#endif
         ret = osdConfig()->logo_on_arming_duration * 1e5;
     } else {
         ret = (REFRESH_1S / 2);
     }
-    displayWrite(osdDisplayPort, 12, 7, DISPLAYPORT_ATTR_NONE, "ARMED");
+    displayWrite(osdDisplayPort, 12, 11, DISPLAYPORT_ATTR_NONE, "ARMED");
 
     return ret;
 }
+
+bool osdStatsVisible = false;
 
 STATIC_UNIT_TESTED void osdRefresh(timeUs_t currentTimeUs)
 {
     static timeUs_t lastTimeUs = 0;
     static bool osdStatsEnabled = false;
-    static bool osdStatsVisible = false;
     static timeUs_t osdStatsRefreshTimeUs;
 
     // detect arm/disarm
@@ -947,6 +942,8 @@ STATIC_UNIT_TESTED void osdRefresh(timeUs_t currentTimeUs)
             osdStatsEnabled = false;
             osdStatsVisible = false;
             osdResetStats();
+
+            osdArming = true;
             resumeRefreshAt = osdShowArmed() + currentTimeUs;
         } else if (isSomeStatEnabled()
                    && !suppressStatsDisplay
@@ -954,7 +951,7 @@ STATIC_UNIT_TESTED void osdRefresh(timeUs_t currentTimeUs)
                        || !VISIBLE(osdElementConfig()->item_pos[OSD_WARNINGS]))) { // suppress stats if runaway takeoff triggered disarm and WARNINGS element is visible
             osdStatsEnabled = true;
             resumeRefreshAt = currentTimeUs + (60 * REFRESH_1S);
-            stats.end_voltage = getStatsVoltage();
+            stats.end_voltage = getBatteryVoltage();
             osdStatsRowCount = 0; // reset to 0 so it will be recalculated on the next stats refresh
         }
 
@@ -979,12 +976,31 @@ STATIC_UNIT_TESTED void osdRefresh(timeUs_t currentTimeUs)
             } else if (!IS_RC_MODE_ACTIVE(BOXOSD)) {
                 if (!osdStatsVisible) {
                     osdStatsVisible = true;
+#ifdef USE_BRAINFPV_OSD
+                    if (!useBrainFPVOSD) {
+                        osdStatsRefreshTimeUs = 0;
+                    }
+#else
                     osdStatsRefreshTimeUs = 0;
+#endif
+
                 }
+#ifdef USE_BRAINFPV_OSD
+                if (useBrainFPVOSD) {
+                    osdRefreshStats();
+                }
+                else {
+                    if (currentTimeUs >= osdStatsRefreshTimeUs) {
+                        osdStatsRefreshTimeUs = currentTimeUs + REFRESH_1S;
+                        osdRefreshStats();
+                    }
+                }
+#else
                 if (currentTimeUs >= osdStatsRefreshTimeUs) {
                     osdStatsRefreshTimeUs = currentTimeUs + REFRESH_1S;
                     osdRefreshStats();
                 }
+#endif /* USE_BRAINFPV_OSD */
             }
         }
     }
@@ -1005,6 +1021,11 @@ STATIC_UNIT_TESTED void osdRefresh(timeUs_t currentTimeUs)
             resumeRefreshAt = 0;
             osdStatsEnabled = false;
             stats.armed_time = 0;
+#ifdef USE_BRAINFPV_OSD
+            if (useBrainFPVOSD) {
+                osdArming = false;
+            }
+#endif
         }
     }
 
@@ -1022,7 +1043,7 @@ STATIC_UNIT_TESTED void osdRefresh(timeUs_t currentTimeUs)
             const float a = accAverage[axis];
             osdGForce += a * a;
         }
-        osdGForce = fast_fsqrtf(osdGForce) * acc.dev.acc_1G_rec;
+        osdGForce = sqrtf(osdGForce) * acc.dev.acc_1G_rec;
     }
 #endif
 
@@ -1031,7 +1052,7 @@ STATIC_UNIT_TESTED void osdRefresh(timeUs_t currentTimeUs)
 #endif
     {
         osdUpdateAlarms();
-        osdDrawElements();
+        osdDrawElements(currentTimeUs);
         displayHeartbeat(osdDisplayPort);
     }
     displayCommitTransaction(osdDisplayPort);
@@ -1043,14 +1064,6 @@ STATIC_UNIT_TESTED void osdRefresh(timeUs_t currentTimeUs)
 void osdUpdate(timeUs_t currentTimeUs)
 {
     static uint32_t counter = 0;
-
-    if (!osdIsReady) {
-        if (!displayCheckReady(osdDisplayPort, false)) {
-            return;
-        }
-
-        osdCompleteInitialization();
-    }
 
     if (isBeeperOn()) {
         showVisualBeeper = true;
@@ -1073,7 +1086,13 @@ void osdUpdate(timeUs_t currentTimeUs)
 #endif
 
     // redraw values in buffer
-    if (counter % OSD_DRAW_FREQ_DENOM == 0) {
+#define DRAW_FREQ_DENOM 5
+
+#ifdef USE_BRAINFPV_OSD
+    if (useBrainFPVOSD || (counter % DRAW_FREQ_DENOM == 0)) {
+#else
+    if (counter % DRAW_FREQ_DENOM == 0) {
+#endif
         osdRefresh(currentTimeUs);
         showVisualBeeper = false;
     } else {
@@ -1082,7 +1101,7 @@ void osdUpdate(timeUs_t currentTimeUs)
         // For the MSP displayPort device only do the drawScreen once per
         // logical OSD cycle as there is no output buffering needing to be flushed.
         if (osdDisplayPortDeviceType == OSD_DISPLAYPORT_DEVICE_MSP) {
-            doDrawScreen = (counter % OSD_DRAW_FREQ_DENOM == 1);
+            doDrawScreen = (counter % DRAW_FREQ_DENOM == 1);
         }
 #endif
         // Redraw a portion of the chars per idle to spread out the load and SPI bus utilization

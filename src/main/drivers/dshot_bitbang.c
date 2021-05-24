@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -54,45 +54,38 @@
 #define dbgPinLo(x)
 #endif
 
-FAST_DATA_ZERO_INIT bbPacer_t bbPacers[MAX_MOTOR_PACERS];  // TIM1 or TIM8
-FAST_DATA_ZERO_INIT int usedMotorPacers = 0;
+FAST_RAM_ZERO_INIT bbPacer_t bbPacers[MAX_MOTOR_PACERS];  // TIM1 or TIM8
+FAST_RAM_ZERO_INIT int usedMotorPacers = 0;
 
-FAST_DATA_ZERO_INIT bbPort_t bbPorts[MAX_SUPPORTED_MOTOR_PORTS];
-FAST_DATA_ZERO_INIT int usedMotorPorts;
+FAST_RAM_ZERO_INIT bbPort_t bbPorts[MAX_SUPPORTED_MOTOR_PORTS];
+FAST_RAM_ZERO_INIT int usedMotorPorts;
 
-FAST_DATA_ZERO_INIT bbMotor_t bbMotors[MAX_SUPPORTED_MOTORS];
+FAST_RAM_ZERO_INIT bbMotor_t bbMotors[MAX_SUPPORTED_MOTORS];
 
-static FAST_DATA_ZERO_INIT int motorCount;
+static FAST_RAM_ZERO_INIT int motorCount;
 dshotBitbangStatus_e bbStatus;
 
 // For MCUs that use MPU to control DMA coherency, there might be a performance hit
 // on manipulating input buffer content especially if it is read multiple times,
 // as the buffer region is attributed as not cachable.
 // If this is not desirable, we should use manual cache invalidation.
-#ifdef USE_DSHOT_CACHE_MGMT
-#define BB_OUTPUT_BUFFER_ATTRIBUTE __attribute__((aligned(32)))
-#define BB_INPUT_BUFFER_ATTRIBUTE  __attribute__((aligned(32)))
-#else
+
 #if defined(STM32F4)
 #define BB_OUTPUT_BUFFER_ATTRIBUTE
 #define BB_INPUT_BUFFER_ATTRIBUTE
 #elif defined(STM32F7)
-#define BB_OUTPUT_BUFFER_ATTRIBUTE FAST_DATA_ZERO_INIT
-#define BB_INPUT_BUFFER_ATTRIBUTE  FAST_DATA_ZERO_INIT
+#define BB_OUTPUT_BUFFER_ATTRIBUTE FAST_RAM_ZERO_INIT
+#define BB_INPUT_BUFFER_ATTRIBUTE  FAST_RAM_ZERO_INIT
 #elif defined(STM32H7)
 #define BB_OUTPUT_BUFFER_ATTRIBUTE DMA_RAM
 #define BB_INPUT_BUFFER_ATTRIBUTE  DMA_RAM
-#elif defined(STM32G4)
-#define BB_OUTPUT_BUFFER_ATTRIBUTE DMA_RAM_W
-#define BB_INPUT_BUFFER_ATTRIBUTE  DMA_RAM_R
 #endif
-#endif // USE_DSHOT_CACHE_MGMT
 
-BB_OUTPUT_BUFFER_ATTRIBUTE uint32_t bbOutputBuffer[MOTOR_DSHOT_BUF_CACHE_ALIGN_LENGTH * MAX_SUPPORTED_MOTOR_PORTS];
-BB_INPUT_BUFFER_ATTRIBUTE uint16_t bbInputBuffer[DSHOT_BB_PORT_IP_BUF_CACHE_ALIGN_LENGTH * MAX_SUPPORTED_MOTOR_PORTS];
+BB_OUTPUT_BUFFER_ATTRIBUTE uint32_t bbOutputBuffer[MOTOR_DSHOT_BUFFER_SIZE * MAX_SUPPORTED_MOTOR_PORTS];
+BB_INPUT_BUFFER_ATTRIBUTE uint16_t bbInputBuffer[DSHOT_BITBANG_PORT_INPUT_BUFFER_LENGTH * MAX_SUPPORTED_MOTOR_PORTS];
 
 uint8_t bbPuPdMode;
-FAST_DATA_ZERO_INIT timeUs_t dshotFrameUs;
+FAST_RAM_ZERO_INIT timeUs_t dshotFrameUs;
 
 
 const timerHardware_t bbTimerHardware[] = {
@@ -108,32 +101,11 @@ const timerHardware_t bbTimerHardware[] = {
     DEF_TIM(TIM1,  CH2, NONE,  TIM_USE_NONE, 0, 1),
     DEF_TIM(TIM1,  CH3, NONE,  TIM_USE_NONE, 0, 1),
     DEF_TIM(TIM1,  CH4, NONE,  TIM_USE_NONE, 0, 0),
-
-#elif defined(STM32G4) || defined(STM32H7)
-    // XXX TODO: STM32G4 and STM32H7 can use any timer for pacing
-
-    // DMA request numbers are duplicated for TIM1 and TIM8:
-    //   - Any pacer can serve a GPIO port.
-    //   - For quads (or less), 4 pacers can cover the worst case scenario of
-    //     4 motors scattered across 4 different GPIO ports.
-    //   - For hexas (and larger), more channels may become necessary,
-    //     in which case the DMA request numbers should be modified.
-    DEF_TIM(TIM8,  CH1, NONE,  TIM_USE_NONE, 0, 0, 0),
-    DEF_TIM(TIM8,  CH2, NONE,  TIM_USE_NONE, 0, 1, 0),
-    DEF_TIM(TIM8,  CH3, NONE,  TIM_USE_NONE, 0, 2, 0),
-    DEF_TIM(TIM8,  CH4, NONE,  TIM_USE_NONE, 0, 3, 0),
-    DEF_TIM(TIM1,  CH1, NONE,  TIM_USE_NONE, 0, 0, 0),
-    DEF_TIM(TIM1,  CH2, NONE,  TIM_USE_NONE, 0, 1, 0),
-    DEF_TIM(TIM1,  CH3, NONE,  TIM_USE_NONE, 0, 2, 0),
-    DEF_TIM(TIM1,  CH4, NONE,  TIM_USE_NONE, 0, 3, 0),
-
-#else
-#error MCU dependent code required
 #endif
 };
 
-static FAST_DATA_ZERO_INIT motorDevice_t bbDevice;
-static FAST_DATA_ZERO_INIT timeUs_t lastSendUs;
+static FAST_RAM_ZERO_INIT motorDevice_t bbDevice;
+static FAST_RAM_ZERO_INIT timeUs_t lastSendUs;
 
 static motorPwmProtocolTypes_e motorPwmProtocol;
 
@@ -427,11 +399,11 @@ static bool bbMotorConfig(IO_t io, uint8_t motorIndex, motorPwmProtocolTypes_e p
 
         bbPort->gpio = IO_GPIO(io);
 
-        bbPort->portOutputCount = MOTOR_DSHOT_BUF_LENGTH;
-        bbPort->portOutputBuffer = &bbOutputBuffer[(bbPort - bbPorts) * MOTOR_DSHOT_BUF_CACHE_ALIGN_LENGTH];
+        bbPort->portOutputCount = MOTOR_DSHOT_BUFFER_SIZE;
+        bbPort->portOutputBuffer = &bbOutputBuffer[(bbPort - bbPorts) * MOTOR_DSHOT_BUFFER_SIZE];
 
-        bbPort->portInputCount = DSHOT_BB_PORT_IP_BUF_LENGTH;
-        bbPort->portInputBuffer = &bbInputBuffer[(bbPort - bbPorts) * DSHOT_BB_PORT_IP_BUF_CACHE_ALIGN_LENGTH];
+        bbPort->portInputCount = DSHOT_BITBANG_PORT_INPUT_BUFFER_LENGTH;
+        bbPort->portInputBuffer = &bbInputBuffer[(bbPort - bbPorts) * DSHOT_BITBANG_PORT_INPUT_BUFFER_LENGTH];
 
         bbTimebaseSetup(bbPort, pwmProtocolType);
         bbTIM_TimeBaseInit(bbPort, bbPort->outputARR);
@@ -485,20 +457,6 @@ static bool bbUpdateStart(void)
         }
 
         for (int motorIndex = 0; motorIndex < MAX_SUPPORTED_MOTORS && motorIndex < motorCount; motorIndex++) {
-#ifdef USE_DSHOT_CACHE_MGMT
-            // Only invalidate the buffer once. If all motors are on a common port they'll share a buffer.
-            bool invalidated = false;
-            for (int i = 0; i < motorIndex; i++) {
-                if (bbMotors[motorIndex].bbPort->portInputBuffer == bbMotors[i].bbPort->portInputBuffer) {
-                    invalidated = true;
-                }
-            }
-            if (!invalidated) {
-                SCB_InvalidateDCache_by_Addr((uint32_t *)bbMotors[motorIndex].bbPort->portInputBuffer,
-                                             DSHOT_BB_PORT_IP_BUF_CACHE_ALIGN_BYTES);
-            }
-#endif
-
 #ifdef STM32F4
             uint32_t value = decode_bb_bitband(
                 bbMotors[motorIndex].bbPort->portInputBuffer,
@@ -589,21 +547,6 @@ static void bbUpdateComplete(void)
             return;
         }
     }
-
-#ifdef USE_DSHOT_CACHE_MGMT
-    for (int motorIndex = 0; motorIndex < MAX_SUPPORTED_MOTORS && motorIndex < motorCount; motorIndex++) {
-        // Only clean the buffer once. If all motors are on a common port they'll share a buffer.
-        bool clean = false;
-        for (int i = 0; i < motorIndex; i++) {
-            if (bbMotors[motorIndex].bbPort->portOutputBuffer == bbMotors[i].bbPort->portOutputBuffer) {
-                clean = true;
-            }
-        }
-        if (!clean) {
-            SCB_CleanDCache_by_Addr(bbMotors[motorIndex].bbPort->portOutputBuffer, MOTOR_DSHOT_BUF_CACHE_ALIGN_BYTES);
-        }
-    }
-#endif
 
 #ifdef USE_DSHOT_TELEMETRY
     for (int i = 0; i < usedMotorPorts; i++) {
@@ -706,12 +649,9 @@ motorDevice_t *dshotBitbangDevInit(const motorDevConfig_t *motorConfig, uint8_t 
     useDshotTelemetry = motorConfig->useDshotTelemetry;
 #endif
 
-    memset(bbOutputBuffer, 0, sizeof(bbOutputBuffer));
-
     for (int motorIndex = 0; motorIndex < MAX_SUPPORTED_MOTORS && motorIndex < motorCount; motorIndex++) {
-        const unsigned reorderedMotorIndex = motorConfig->motorOutputReordering[motorIndex];
-        const timerHardware_t *timerHardware = timerGetByTag(motorConfig->ioTags[reorderedMotorIndex]);
-        const IO_t io = IOGetByTag(motorConfig->ioTags[reorderedMotorIndex]);
+        const timerHardware_t *timerHardware = timerGetByTag(motorConfig->ioTags[motorIndex]);
+        const IO_t io = IOGetByTag(motorConfig->ioTags[motorIndex]);
 
         uint8_t output = motorConfig->motorPwmInversion ?  timerHardware->output ^ TIMER_OUTPUT_INVERTED : timerHardware->output;
         bbPuPdMode = (output & TIMER_OUTPUT_INVERTED) ? BB_GPIO_PULLDOWN : BB_GPIO_PULLUP;
@@ -738,7 +678,7 @@ motorDevice_t *dshotBitbangDevInit(const motorDevConfig_t *motorConfig, uint8_t 
         bbMotors[motorIndex].output = output;
 #if defined(STM32F4) || defined(STM32F3)
         bbMotors[motorIndex].iocfg = IO_CONFIG(GPIO_Mode_OUT, GPIO_Speed_50MHz, GPIO_OType_PP, bbPuPdMode);
-#elif defined(STM32F7) || defined(STM32G4) || defined(STM32H7)
+#elif defined(STM32F7)
         bbMotors[motorIndex].iocfg = IO_CONFIG(GPIO_MODE_OUTPUT_PP, GPIO_SPEED_FREQ_VERY_HIGH, bbPuPdMode);
 #endif
 

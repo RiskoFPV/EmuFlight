@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -62,18 +62,7 @@
 
 #define MOTOR_DSHOT_GCR_CHANGE_INTERVAL_NS(rate) (MOTOR_DSHOT_CHANGE_INTERVAL_NS(rate) * 5 / 4)
 
-#define MOTOR_DSHOT_BUF_LENGTH            ((MOTOR_DSHOT_FRAME_BITS / MOTOR_DSHOT_BIT_PER_SYMBOL) * MOTOR_DSHOT_STATE_PER_SYMBOL)
-#ifdef USE_DSHOT_CACHE_MGMT
-// MOTOR_DSHOT_BUF_LENGTH is multiples of uint32_t
-// Number of bytes required for buffer
-#define MOTOR_DSHOT_BUF_BYTES              (MOTOR_DSHOT_BUF_LENGTH * sizeof (uint32_t))
-// Number of bytes required to cache align buffer
-#define MOTOR_DSHOT_BUF_CACHE_ALIGN_BYTES  ((MOTOR_DSHOT_BUF_BYTES + 0x20) & ~0x1f)
-// Size of array to create a cache aligned buffer
-#define MOTOR_DSHOT_BUF_CACHE_ALIGN_LENGTH (MOTOR_DSHOT_BUF_CACHE_ALIGN_BYTES / sizeof (uint32_t))
-#else
-#define MOTOR_DSHOT_BUF_CACHE_ALIGN_LENGTH MOTOR_DSHOT_BUF_LENGTH
-#endif
+#define MOTOR_DSHOT_BUFFER_SIZE            ((MOTOR_DSHOT_FRAME_BITS / MOTOR_DSHOT_BIT_PER_SYMBOL) * MOTOR_DSHOT_STATE_PER_SYMBOL)
 
 #ifdef USE_HAL_DRIVER
 #define BB_GPIO_PULLDOWN GPIO_PULLDOWN
@@ -85,17 +74,12 @@
 
 #ifdef USE_DMA_REGISTER_CACHE
 typedef struct dmaRegCache_s {
-#if defined(STM32F4) || defined(STM32F7) || defined(STM32H7)
+#if defined(STM32F4) || defined(STM32F7)
     uint32_t CR;
     uint32_t FCR;
     uint32_t NDTR;
     uint32_t PAR;
     uint32_t M0AR;
-#elif defined(STM32G4)
-    uint32_t CCR;
-    uint32_t CNDTR;
-    uint32_t CPAR;
-    uint32_t CMAR;
 #else
 #error No MCU dependent code here
 #endif
@@ -190,13 +174,13 @@ typedef struct bbMotor_s {
 } bbMotor_t;
 
 #define MAX_MOTOR_PACERS  4
-extern FAST_DATA_ZERO_INIT bbPacer_t bbPacers[MAX_MOTOR_PACERS];  // TIM1 or TIM8
-extern FAST_DATA_ZERO_INIT int usedMotorPacers;
+extern FAST_RAM_ZERO_INIT bbPacer_t bbPacers[MAX_MOTOR_PACERS];  // TIM1 or TIM8
+extern FAST_RAM_ZERO_INIT int usedMotorPacers;
 
-extern FAST_DATA_ZERO_INIT bbPort_t bbPorts[MAX_SUPPORTED_MOTOR_PORTS];
-extern FAST_DATA_ZERO_INIT int usedMotorPorts;
+extern FAST_RAM_ZERO_INIT bbPort_t bbPorts[MAX_SUPPORTED_MOTOR_PORTS];
+extern FAST_RAM_ZERO_INIT int usedMotorPorts;
 
-extern FAST_DATA_ZERO_INIT bbMotor_t bbMotors[MAX_SUPPORTED_MOTORS];
+extern FAST_RAM_ZERO_INIT bbMotor_t bbMotors[MAX_SUPPORTED_MOTORS];
 
 extern uint8_t bbPuPdMode;
 
@@ -206,7 +190,7 @@ extern uint8_t bbPuPdMode;
 
 // DMA output buffer:
 // DShot requires 3 [word/bit] * 16 [bit] = 48 [word]
-extern uint32_t bbOutputBuffer[MOTOR_DSHOT_BUF_CACHE_ALIGN_LENGTH * MAX_SUPPORTED_MOTOR_PORTS];
+extern uint32_t bbOutputBuffer[MOTOR_DSHOT_BUFFER_SIZE * MAX_SUPPORTED_MOTOR_PORTS];
 
 // DMA input buffer
 // (30us + <frame time> + <slack>) / <input sampling clock perid>
@@ -217,19 +201,8 @@ extern uint32_t bbOutputBuffer[MOTOR_DSHOT_BUF_CACHE_ALIGN_LENGTH * MAX_SUPPORTE
 // <slack> = 10%
 // (30 + 26 + 3) / 0.44 = 134
 // In some cases this was not enough, so we add 6 extra samples
-#define DSHOT_BB_PORT_IP_BUF_LENGTH 140
-#ifdef USE_DSHOT_CACHE_MGMT
-// Each sample is a uint16_t
-// Number of bytes required for buffer
-#define DSHOT_BB_PORT_IP_BUF_BYTES              (DSHOT_BB_PORT_IP_BUF_LENGTH * sizeof (uint16_t))
-// Number of bytes required to cache align buffer
-#define DSHOT_BB_PORT_IP_BUF_CACHE_ALIGN_BYTES  ((DSHOT_BB_PORT_IP_BUF_BYTES + 0x20) & ~0x1f)
-// Size of array to create a cache aligned buffer
-#define DSHOT_BB_PORT_IP_BUF_CACHE_ALIGN_LENGTH (DSHOT_BB_PORT_IP_BUF_CACHE_ALIGN_BYTES / sizeof (uint16_t))
-#else
-#define DSHOT_BB_PORT_IP_BUF_CACHE_ALIGN_LENGTH DSHOT_BB_PORT_IP_BUF_LENGTH
-#endif
-extern uint16_t bbInputBuffer[DSHOT_BB_PORT_IP_BUF_CACHE_ALIGN_LENGTH * MAX_SUPPORTED_MOTOR_PORTS];
+#define DSHOT_BITBANG_PORT_INPUT_BUFFER_LENGTH 140
+extern uint16_t bbInputBuffer[DSHOT_BITBANG_PORT_INPUT_BUFFER_LENGTH * MAX_SUPPORTED_MOTOR_PORTS];
 
 void bbGpioSetup(bbMotor_t *bbMotor);
 void bbTimerChannelInit(bbPort_t *bbPort);

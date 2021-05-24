@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -32,15 +32,12 @@
 #include "common/utils.h"
 
 #include "drivers/display.h"
-#include "drivers/osd.h"
 
 #include "io/displayport_msp.h"
 
 #include "msp/msp.h"
 #include "msp/msp_protocol.h"
 #include "msp/msp_serial.h"
-
-#include "pg/vcd.h"
 
 static displayPort_t mspDisplayPort;
 
@@ -142,10 +139,9 @@ static bool isSynced(const displayPort_t *displayPort)
     return true;
 }
 
-static void redraw(displayPort_t *displayPort)
+static void resync(displayPort_t *displayPort)
 {
-    const uint8_t displayRows = (vcdProfile()->video_system == VIDEO_SYSTEM_PAL) ? 16 : 13;
-    displayPort->rows = displayRows + displayPortProfileMsp()->rowAdjust;
+    displayPort->rows = 13 + displayPortProfileMsp()->rowAdjust; // XXX Will reflect NTSC/PAL in the future
     displayPort->cols = 30 + displayPortProfileMsp()->colAdjust;
     drawScreen(displayPort);
 }
@@ -166,7 +162,7 @@ static const displayPortVTable_t mspDisplayPortVTable = {
     .writeChar = writeChar,
     .isTransferInProgress = isTransferInProgress,
     .heartbeat = heartbeat,
-    .redraw = redraw,
+    .resync = resync,
     .isSynced = isSynced,
     .txBytesFree = txBytesFree,
     .layerSupported = NULL,
@@ -176,13 +172,13 @@ static const displayPortVTable_t mspDisplayPortVTable = {
 
 displayPort_t *displayPortMspInit(void)
 {
-    displayInit(&mspDisplayPort, &mspDisplayPortVTable, DISPLAYPORT_DEVICE_TYPE_MSP);
+    displayInit(&mspDisplayPort, &mspDisplayPortVTable);
 
     if (displayPortProfileMsp()->useDeviceBlink) {
         mspDisplayPort.useDeviceBlink = true;
     }
 
-    redraw(&mspDisplayPort);
+    resync(&mspDisplayPort);
     return &mspDisplayPort;
 }
 #endif // USE_MSP_DISPLAYPORT

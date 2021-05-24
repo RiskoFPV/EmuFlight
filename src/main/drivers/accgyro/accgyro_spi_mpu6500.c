@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -37,17 +37,12 @@
 #include "accgyro_mpu6500.h"
 #include "accgyro_spi_mpu6500.h"
 
-// 1 MHz max SPI frequency for initialisation
-#define MPU6500_MAX_SPI_INIT_CLK_HZ 1000000
-// 20 MHz max SPI frequency
-#define MPU6500_MAX_SPI_CLK_HZ 20000000
-
 #define BIT_SLEEP                   0x40
 
 static void mpu6500SpiInit(const busDevice_t *bus)
 {
 
-    spiSetDivisor(bus->busdev_u.spi.instance, spiCalculateDivider(MPU6500_MAX_SPI_CLK_HZ));
+    spiSetDivisor(bus->busdev_u.spi.instance, SPI_CLOCK_FAST);
 }
 
 uint8_t mpu6500SpiDetect(const busDevice_t *bus)
@@ -90,7 +85,7 @@ void mpu6500SpiAccInit(accDev_t *acc)
 
 void mpu6500SpiGyroInit(gyroDev_t *gyro)
 {
-    spiSetDivisor(gyro->bus.busdev_u.spi.instance, spiCalculateDivider(MPU6500_MAX_SPI_INIT_CLK_HZ));
+    spiSetDivisor(gyro->bus.busdev_u.spi.instance, SPI_CLOCK_SLOW);
     delayMicroseconds(1);
 
     mpu6500GyroInit(gyro);
@@ -99,7 +94,7 @@ void mpu6500SpiGyroInit(gyroDev_t *gyro)
     spiBusWriteRegister(&gyro->bus, MPU_RA_USER_CTRL, MPU6500_BIT_I2C_IF_DIS);
     delay(100);
 
-    spiSetDivisor(gyro->bus.busdev_u.spi.instance, spiCalculateDivider(MPU6500_MAX_SPI_CLK_HZ));
+    spiSetDivisor(gyro->bus.busdev_u.spi.instance, SPI_CLOCK_FAST);
     delayMicroseconds(1);
 }
 
@@ -131,10 +126,11 @@ bool mpu6500SpiGyroDetect(gyroDev_t *gyro)
     case MPU_9250_SPI:
     case ICM_20608_SPI:
     case ICM_20602_SPI:
-        gyro->scale = GYRO_SCALE_2000DPS;
+        // 16.4 dps/lsb scalefactor
+        gyro->scale = 1.0f / 16.4f;
         break;
     case ICM_20601_SPI:
-        gyro->scale = (gyro->gyro_high_fsr ? GYRO_SCALE_4000DPS : GYRO_SCALE_2000DPS);
+        gyro->scale = 1.0f / (gyro->gyro_high_fsr ? 8.2f : 16.4f);
         break;
     default:
         return false;

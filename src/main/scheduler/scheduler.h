@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -64,11 +64,6 @@ typedef struct {
     timeUs_t     averageExecutionTimeUs;
     timeUs_t     averageDeltaTimeUs;
     float        movingAverageCycleTimeUs;
-#if defined(USE_LATE_TASK_STATISTICS)
-    uint32_t     runCount;
-    uint32_t     lateCount;
-    timeUs_t     execTime;
-#endif
 } taskInfo_t;
 
 typedef enum {
@@ -116,7 +111,7 @@ typedef enum {
 #ifdef USE_TRANSPONDER
     TASK_TRANSPONDER,
 #endif
-#ifdef USE_STACK_CHECK
+#ifdef STACK_CHECK
     TASK_STACK_CHECK,
 #endif
 #ifdef USE_OSD
@@ -184,11 +179,6 @@ typedef struct {
     timeUs_t movingSumDeltaTimeUs;  // moving sum over 32 samples
     timeUs_t maxExecutionTimeUs;
     timeUs_t totalExecutionTimeUs;    // total time consumed by task since boot
-#if defined(USE_LATE_TASK_STATISTICS)
-    uint32_t runCount;
-    uint32_t lateCount;
-    timeUs_t execTime;
-#endif
 #endif
 } task_t;
 
@@ -197,7 +187,6 @@ void getTaskInfo(taskId_e taskId, taskInfo_t *taskInfo);
 void rescheduleTask(taskId_e taskId, timeDelta_t newPeriodUs);
 void setTaskEnabled(taskId_e taskId, bool newEnabledState);
 timeDelta_t getTaskDeltaTimeUs(taskId_e taskId);
-void ignoreTaskTime();
 void schedulerSetCalulateTaskStatistics(bool calculateTaskStatistics);
 void schedulerResetTaskStatistics(taskId_e taskId);
 void schedulerResetTaskMaxExecutionTime(taskId_e taskId);

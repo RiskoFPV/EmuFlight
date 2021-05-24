@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -108,9 +108,9 @@ void displayHeartbeat(displayPort_t *instance)
     instance->vTable->heartbeat(instance);
 }
 
-void displayRedraw(displayPort_t *instance)
+void displayResync(displayPort_t *instance)
 {
-    instance->vTable->redraw(instance);
+    instance->vTable->resync(instance);
 }
 
 uint16_t displayTxBytesFree(const displayPort_t *instance)
@@ -153,19 +153,12 @@ bool displayWriteFontCharacter(displayPort_t *instance, uint16_t addr, const osd
     return false;
 }
 
-void displaySetBackgroundType(displayPort_t *instance, displayPortBackground_e backgroundType)
+bool displayIsReady(displayPort_t *instance)
 {
-    if (instance->vTable->setBackgroundType) {
-        instance->vTable->setBackgroundType(instance, backgroundType);
+    if (instance->vTable->isReady) {
+        return instance->vTable->isReady(instance);
     }
-}
-
-bool displayCheckReady(displayPort_t *instance, bool rescan)
-{
-    if (instance->vTable->checkReady) {
-        return instance->vTable->checkReady(instance, rescan);
-    }
-    // Drivers that don't provide a checkReady method are
+    // Drivers that don't provide an isReady method are
     // assumed to be immediately ready (either by actually
     // begin ready very quickly or by blocking)
     return true;
@@ -200,19 +193,7 @@ bool displayGetCanvas(displayCanvas_t *canvas, const displayPort_t *instance)
     return false;
 }
 
-bool displaySupportsOsdSymbols(displayPort_t *instance)
-{
-    // Assume device types that support OSD display will support the OSD symbols (since the OSD logic will use them)
-    if ((instance->deviceType == DISPLAYPORT_DEVICE_TYPE_MAX7456)
-        || (instance->deviceType == DISPLAYPORT_DEVICE_TYPE_MSP)
-        || (instance->deviceType == DISPLAYPORT_DEVICE_TYPE_FRSKYOSD)) {
-        return true;
-    } else {
-        return false;
-    }
-}
-
-void displayInit(displayPort_t *instance, const displayPortVTable_t *vTable, displayPortDeviceType_e deviceType)
+void displayInit(displayPort_t *instance, const displayPortVTable_t *vTable)
 {
     instance->vTable = vTable;
     instance->vTable->clearScreen(instance);
@@ -220,5 +201,4 @@ void displayInit(displayPort_t *instance, const displayPortVTable_t *vTable, dis
     instance->cleared = true;
     instance->grabCount = 0;
     instance->cursorRow = -1;
-    instance->deviceType = deviceType;
 }

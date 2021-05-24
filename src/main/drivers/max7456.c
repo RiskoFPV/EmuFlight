@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -24,7 +24,7 @@
 
 #include "platform.h"
 
-#ifdef USE_MAX7456
+#ifdef USE_MAX7456 !defined(USE_BRAINFPV_OSD)
 
 #include "build/debug.h"
 
@@ -41,11 +41,6 @@
 #include "drivers/osd_symbols.h"
 #include "drivers/time.h"
 
-
-// 20 MHz max SPI frequency
-#define MAX7456_MAX_SPI_CLK_HZ 10000000
-// 1 MHz restore SPI frequency for shared SPI bus
-#define MAX7456_MAX_SPI_SHARED_CLK 1000000
 
 // DEBUG_MAX7456_SIGNAL
 #define DEBUG_MAX7456_SIGNAL_MODEREG       0
@@ -100,7 +95,7 @@
 #define BACKGROUND_BRIGHTNESS_42 0x06
 #define BACKGROUND_BRIGHTNESS_49 0x07
 
-#define BACKGROUND_MODE_GRAY 0x80
+#define BACKGROUND_MODE_GRAY 0x40
 
 // STAT register bits
 
@@ -184,7 +179,7 @@
     #define __spiBusTransactionEnd(busdev)          spiBusTransactionEnd(busdev)
 #else
     #define __spiBusTransactionBegin(busdev)        {spiBusSetDivisor(busdev, max7456SpiClock);IOLo((busdev)->busdev_u.spi.csnPin);}
-    #define __spiBusTransactionEnd(busdev)       {IOHi((busdev)->busdev_u.spi.csnPin);spiSetDivisor((busdev)->busdev_u.spi.instance, spiCalculateDivider(MAX7456_MAX_SPI_SHARED_CLK));}
+    #define __spiBusTransactionEnd(busdev)       {IOHi((busdev)->busdev_u.spi.csnPin);spiSetDivisor((busdev)->busdev_u.spi.instance, MAX7456_RESTORE_CLK);}
 #endif
 
 #define MAX7456_SUPPORTED_LAYER_COUNT (DISPLAYPORT_LAYER_BACKGROUND + 1)
@@ -200,7 +195,7 @@ busDevice_t max7456BusDevice;
 busDevice_t *busdev = &max7456BusDevice;
 
 static bool max7456DeviceDetected = false;
-static uint16_t max7456SpiClock;
+static uint16_t max7456SpiClock = MAX7456_SPI_CLK;
 
 uint16_t maxScreenSize = VIDEO_BUFFER_CHARS_PAL;
 
@@ -229,8 +224,6 @@ static uint8_t  vosRegValue; // VOS (Vertical offset register) value
 static bool fontIsLoading       = false;
 
 static uint8_t max7456DeviceType;
-
-static displayPortBackground_e deviceBackgroundType = DISPLAY_BACKGROUND_TRANSPARENT;
 
 // previous states initialized outside the valid range to force update on first call
 #define INVALID_PREVIOUS_REGISTER_STATE 255
@@ -371,29 +364,6 @@ void max7456_dma_irq_handler(dmaChannelDescriptor_t* descriptor)
 
 #endif
 
-static void max7456SetRegisterVM1(void)
-{
-    uint8_t backgroundGray = BACKGROUND_BRIGHTNESS_28; // this is the device default background gray level
-    uint8_t vm1Register = BLINK_TIME_1 | BLINK_DUTY_CYCLE_75_25; // device defaults
-    if (deviceBackgroundType != DISPLAY_BACKGROUND_TRANSPARENT) {
-        vm1Register |= BACKGROUND_MODE_GRAY;
-        switch (deviceBackgroundType) {
-        case DISPLAY_BACKGROUND_BLACK:
-            backgroundGray = BACKGROUND_BRIGHTNESS_0;
-            break;
-        case DISPLAY_BACKGROUND_LTGRAY:
-            backgroundGray = BACKGROUND_BRIGHTNESS_49;
-            break;
-        case DISPLAY_BACKGROUND_GRAY:
-        default:
-            backgroundGray = BACKGROUND_BRIGHTNESS_28;
-            break;
-        }
-    }
-    vm1Register |= (backgroundGray << 4);
-    max7456Send(MAX7456ADD_VM1, vm1Register);
-}
-
 uint8_t max7456GetRowsCount(void)
 {
     return (videoSignalReg & VIDEO_MODE_PAL) ? VIDEO_LINES_PAL : VIDEO_LINES_NTSC;
@@ -460,7 +430,6 @@ void max7456ReInit(void)
     max7456Send(MAX7456ADD_VM0, videoSignalReg);
     max7456Send(MAX7456ADD_HOS, hosRegValue);
     max7456Send(MAX7456ADD_VOS, vosRegValue);
-    max7456SetRegisterVM1();
 
     max7456Send(MAX7456ADD_DMM, displayMemoryModeReg | CLEAR_DISPLAY);
     __spiBusTransactionEnd(busdev);
@@ -481,11 +450,9 @@ void max7456PreInit(const max7456Config_t *max7456Config)
 // Here we init only CS and try to init MAX for first time.
 // Also detect device type (MAX v.s. AT)
 
-max7456InitStatus_e max7456Init(const max7456Config_t *max7456Config, const vcdProfile_t *pVcdProfile, bool cpuOverclock)
+bool max7456Init(const max7456Config_t *max7456Config, const vcdProfile_t *pVcdProfile, bool cpuOverclock)
 {
-    max7456SpiClock = spiCalculateDivider(MAX7456_MAX_SPI_CLK_HZ);
     max7456DeviceDetected = false;
-    deviceBackgroundType = DISPLAY_BACKGROUND_TRANSPARENT;
 
     // initialize all layers
     for (unsigned i = 0; i < MAX7456_SUPPORTED_LAYER_COUNT; i++) {
@@ -495,13 +462,13 @@ max7456InitStatus_e max7456Init(const max7456Config_t *max7456Config, const vcdP
     max7456HardwareReset();
 
     if (!max7456Config->csTag || !max7456Config->spiDevice) {
-        return MAX7456_INIT_NOT_CONFIGURED;
+        return false;
     }
 
     busdev->busdev_u.spi.csnPin = IOGetByTag(max7456Config->csTag);
 
     if (!IOIsFreeOrPreinit(busdev->busdev_u.spi.csnPin)) {
-        return MAX7456_INIT_NOT_CONFIGURED;
+        return false;
     }
 
     IOInit(busdev->busdev_u.spi.csnPin, OWNER_OSD_CS, 0);
@@ -515,18 +482,19 @@ max7456InitStatus_e max7456Init(const max7456Config_t *max7456Config, const vcdP
     // Detect MAX7456 and compatible device by reading OSDM (OSD Insertion MUX) register.
     // This register is not modified in this driver, therefore ensured to remain at its default value (0x1B).
 
-    spiSetDivisor(busdev->busdev_u.spi.instance, spiCalculateDivider(MAX7456_MAX_SPI_CLK_HZ) * 2);
+    spiSetDivisor(busdev->busdev_u.spi.instance, MAX7456_SPI_CLK * 2);
 
     __spiBusTransactionBegin(busdev);
 
     uint8_t osdm = max7456Send(MAX7456ADD_OSDM|MAX7456ADD_READ, 0xff);
 
-    __spiBusTransactionEnd(busdev);
 
     if (osdm != 0x1B) {
         IOConfigGPIO(busdev->busdev_u.spi.csnPin, IOCFG_IPU);
-        return MAX7456_INIT_NOT_FOUND;
+        return false;
     }
+
+    __spiBusTransactionEnd(busdev);
 
     // At this point, we can claim the ownership of the CS pin
     max7456DeviceDetected = true;
@@ -552,15 +520,15 @@ max7456InitStatus_e max7456Init(const max7456Config_t *max7456Config, const vcdP
 
     switch (max7456Config->clockConfig) {
     case MAX7456_CLOCK_CONFIG_HALF:
-        max7456SpiClock = spiCalculateDivider(MAX7456_MAX_SPI_CLK_HZ) * 2;
+        max7456SpiClock = MAX7456_SPI_CLK * 2;
         break;
 
     case MAX7456_CLOCK_CONFIG_OC:
-        max7456SpiClock = (cpuOverclock && (max7456DeviceType == MAX7456_DEVICE_TYPE_MAX)) ? spiCalculateDivider(MAX7456_MAX_SPI_CLK_HZ) * 2 : spiCalculateDivider(MAX7456_MAX_SPI_CLK_HZ);
+        max7456SpiClock = (cpuOverclock && (max7456DeviceType == MAX7456_DEVICE_TYPE_MAX)) ? MAX7456_SPI_CLK * 2 : MAX7456_SPI_CLK;
         break;
 
     case MAX7456_CLOCK_CONFIG_FULL:
-        max7456SpiClock = spiCalculateDivider(MAX7456_MAX_SPI_CLK_HZ);
+        max7456SpiClock = MAX7456_SPI_CLK;
         break;
     }
 
@@ -593,7 +561,7 @@ max7456InitStatus_e max7456Init(const max7456Config_t *max7456Config, const vcdP
 #endif
 
     // Real init will be made later when driver detect idle.
-    return MAX7456_INIT_OK;
+    return true;
 }
 
 /**
@@ -922,14 +890,4 @@ bool max7456IsDeviceDetected(void)
 {
     return max7456DeviceDetected;
 }
-
-void max7456SetBackgroundType(displayPortBackground_e backgroundType)
-{
-    deviceBackgroundType = backgroundType;
-
-    __spiBusTransactionBegin(busdev);
-    max7456SetRegisterVM1();
-    __spiBusTransactionEnd(busdev);
-}
-
 #endif // USE_MAX7456

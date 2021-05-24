@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -31,7 +31,7 @@
 
 #define M_LN2_FLOAT 0.69314718055994530942f
 #define M_PI_FLOAT  3.14159265358979323846f
-#define BIQUAD_Q 1.0f / fast_fsqrtf(2.0f)     /* quality factor - 2nd order butterworth*/
+#define BIQUAD_Q 1.0f / sqrtf(2.0f)     /* quality factor - 2nd order butterworth*/
 
 // NULL filter
 
@@ -40,6 +40,7 @@ FAST_CODE float nullFilterApply(filter_t *filter, float input)
     UNUSED(filter);
     return input;
 }
+
 
 // PT1 Low Pass filter
 
@@ -226,118 +227,3 @@ FAST_CODE float laggedMovingAverageUpdate(laggedMovingAverage_t *filter, float i
     const uint16_t denom = filter->primed ? filter->windowSize : filter->movingWindowIndex;
     return filter->movingSum  / denom;
 }
-
-// Robert Bouwens AlphaBetaGamma
-
-void ABGInit(alphaBetaGammaFilter_t *filter, float alpha, int boostGain, int halfLife, float dT) {
-	const float Alpha = alpha * 0.001f;
-  // beta, gamma, and eta gains all derived from
-  // http://yadda.icm.edu.pl/yadda/element/bwmeta1.element.baztech-922ff6cb-e991-417f-93f0-77448f1ef4ec/c/A_Study_Jeong_1_2017.pdf
-
-  const float xi = powf(-Alpha + 1.0f, 0.25); // fourth rool of -a + 1
-  filter->xk = 0.0f;
-  filter->vk = 0.0f;
-  filter->ak = 0.0f;
-  filter->jk = 0.0f;
-  filter->a = Alpha;
-  filter->b = (1.0f / 6.0f) * powf(1.0f - xi, 2) * (11.0f + 14.0f * xi + 11 * xi * xi);
-  filter->g = 2 * powf(1.0f - xi, 3) * (1 + xi);
-  filter->e = (1.0f / 6.0f) * powf(1 - xi, 4);
-	filter->dT = dT;
-	filter->dT2 = dT * dT;
-  filter->dT3 = dT * dT * dT;
-  pt1FilterInit(&filter->boostFilter, pt1FilterGain(100, dT));
-  pt1FilterInit(&filter->velFilter, pt1FilterGain(75, dT));
-  pt1FilterInit(&filter->accFilter, pt1FilterGain(50, dT));
-  pt1FilterInit(&filter->jerkFilter, pt1FilterGain(25, dT));
-
-  filter->boost = (boostGain * boostGain / 1000000) * 0.003;
-  filter->halfLife = halfLife != 0 ?
-            powf(0.5f, dT / (halfLife / 100.0f)): 1.0f;
-
-} // ABGInit
-
-FAST_CODE float alphaBetaGammaApply(alphaBetaGammaFilter_t *filter, float input) {
-	// float xk;   // current system state (ie: position)
-	// float vk;   // derivative of system state (ie: velocity)
-  // float ak;   // derivative of system velociy (ie: acceleration)
-  // float jk;   // derivative of system acceleration (ie: jerk)
-  float rk;   // residual error
-
-  // give the filter limited history
-  filter->xk *= filter->halfLife;
-  filter->vk *= filter->halfLife;
-  filter->ak *= filter->halfLife;
-  filter->jk *= filter->halfLife;
-
-  // update our (estimated) state 'x' from the system (ie pos = pos + vel (last).dT)
-  filter->xk += filter->dT * filter->vk + (1.0f / 2.0f) * filter->dT2 * filter->ak + (1.0f / 6.0f) * filter->dT3 * filter->jk;
-  // update (estimated) velocity (also estimated dterm from measurement)
-  filter->vk += filter->dT * filter->ak + 0.5f * filter->dT2 * filter->jk;
-  filter->ak += filter->dT * filter->jk;
-  // what is our residual error (measured - estimated)
-  rk = input - filter->xk;
-  // artificially boost the error to increase the response of the filter
-  rk += pt1FilterApply(&filter->boostFilter, fabsf(rk) * rk * filter->boost);
-  if ((fabsf(rk * filter->a) > fabsf(input - filter->xk))) {
-      rk = (input - filter->xk) / filter->a;
-  }
-  filter->rk = rk; // for logging
-
-  // update our estimates given the residual error.
-  filter->xk += filter->a * rk;
-  filter->vk += filter->b / filter->dT * rk;
-  filter->ak += filter->g / (2.0f * filter->dT2) * rk;
-  filter->jk += filter->e / (6.0f * filter->dT3) * rk;
-
-  filter->vk = pt1FilterApply(&filter->velFilter, filter->vk);
-  filter->ak = pt1FilterApply(&filter->accFilter, filter->ak);
-  filter->jk = pt1FilterApply(&filter->jerkFilter, filter->jk);
-
-	return filter->xk;
-} // ABGUpdate
-
-float ABGVelocity(alphaBetaGammaFilter_t *filter) {
-    return filter->vk;
-}
-float ABGAcceleration(alphaBetaGammaFilter_t *filter) {
-    return filter->ak;
-}
-float ABGJerk(alphaBetaGammaFilter_t *filter) {
-    return filter->jk;
-}
-float ABGResidualError(alphaBetaGammaFilter_t *filter) {
-    return filter->rk;
-}
-
-FAST_CODE void ptnFilterInit(ptnFilter_t *filter, uint8_t order, uint16_t f_cut, float dT) {
-
-	  // AdjCutHz = CutHz /(fast_fsqrtf(powf(2, 1/Order) -1))
-    const float ScaleF[] = { 1.0f, 1.553773974f, 1.961459177f, 2.298959223f };
-    float Adj_f_cut;
-
-	  filter->order = (order > 4) ? 4 : order;
-	  for (int n = 1; n <= filter->order; n++) {
-		    filter->state[n] = 0.0f;
-    }
-
-	  Adj_f_cut = (float)f_cut * ScaleF[filter->order - 1];
-
-	  filter->k = dT / ((1.0f / (2.0f * M_PI_FLOAT * Adj_f_cut)) + dT);
-} // ptnFilterInit
-
-FAST_CODE void ptnFilterUpdate(ptnFilter_t *filter, float f_cut, float ScaleF, float dT) {
-    float Adj_f_cut;
-    Adj_f_cut = (float)f_cut * ScaleF;
-    filter->k = dT / ((1.0f / (2.0f * M_PI_FLOAT * Adj_f_cut)) + dT);
-}
-
-FAST_CODE float ptnFilterApply(ptnFilter_t *filter, float input) {
-    filter->state[0] = input;
-
-	  for (int n = 1; n <= filter->order; n++) {
-		    filter->state[n] += (filter->state[n - 1] - filter->state[n]) * filter->k;
-    }
-
-	  return filter->state[filter->order];
-} // ptnFilterApply

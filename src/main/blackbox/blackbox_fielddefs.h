@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -39,41 +39,20 @@ typedef enum FlightLogFieldCondition {
     FLIGHT_LOG_FIELD_CONDITION_RANGEFINDER,
     FLIGHT_LOG_FIELD_CONDITION_RSSI,
 
-    FLIGHT_LOG_FIELD_CONDITION_PID,
     FLIGHT_LOG_FIELD_CONDITION_NONZERO_PID_D_0,
     FLIGHT_LOG_FIELD_CONDITION_NONZERO_PID_D_1,
     FLIGHT_LOG_FIELD_CONDITION_NONZERO_PID_D_2,
 
-    FLIGHT_LOG_FIELD_CONDITION_RC_COMMANDS,
-    FLIGHT_LOG_FIELD_CONDITION_SETPOINT,
-
     FLIGHT_LOG_FIELD_CONDITION_NOT_LOGGING_EVERY_FRAME,
 
-    FLIGHT_LOG_FIELD_CONDITION_GYRO,
     FLIGHT_LOG_FIELD_CONDITION_ACC,
-    FLIGHT_LOG_FIELD_CONDITION_DEBUG_LOG,
+    FLIGHT_LOG_FIELD_CONDITION_DEBUG,
 
     FLIGHT_LOG_FIELD_CONDITION_NEVER,
 
     FLIGHT_LOG_FIELD_CONDITION_FIRST = FLIGHT_LOG_FIELD_CONDITION_ALWAYS,
     FLIGHT_LOG_FIELD_CONDITION_LAST = FLIGHT_LOG_FIELD_CONDITION_NEVER
 } FlightLogFieldCondition;
-
-typedef enum FlightLogFieldSelect_e { // no more than 32
-    FLIGHT_LOG_FIELD_SELECT_PID = 0,
-    FLIGHT_LOG_FIELD_SELECT_RC_COMMANDS,
-    FLIGHT_LOG_FIELD_SELECT_SETPOINT,
-    FLIGHT_LOG_FIELD_SELECT_BATTERY,
-    FLIGHT_LOG_FIELD_SELECT_MAG,
-    FLIGHT_LOG_FIELD_SELECT_ALTITUDE,
-    FLIGHT_LOG_FIELD_SELECT_RSSI,
-    FLIGHT_LOG_FIELD_SELECT_GYRO,
-    FLIGHT_LOG_FIELD_SELECT_ACC,
-    FLIGHT_LOG_FIELD_SELECT_DEBUG_LOG,
-    FLIGHT_LOG_FIELD_SELECT_MOTOR,
-    FLIGHT_LOG_FIELD_SELECT_GPS,
-    FLIGHT_LOG_FIELD_SELECT_COUNT
-} FlightLogFieldSelect_e;
 
 typedef enum FlightLogFieldPredictor {
     //No prediction:

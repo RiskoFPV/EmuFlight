@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -28,22 +28,8 @@
 #include "axis.h"
 #include "maths.h"
 
-#ifdef USE_ARM_MATH
-#include "arm_math.h"
-#endif
-
 #if defined(FAST_MATH) || defined(VERY_FAST_MATH)
 #if defined(VERY_FAST_MATH)
-
-float fast_fsqrtf(const double value) {
-#ifdef USE_ARM_MATH
-    float squirt;
-    arm_sqrt_f32(value, &squirt);
-    return squirt;
-#else
-    return sqrtf(value);
-#endif
-}
 
 // http://lolengine.net/blog/2011/12/21/better-function-approximations
 // Chebyshev http://stackoverflow.com/questions/345085/how-do-trigonometric-functions-work/345117#345117
@@ -112,7 +98,7 @@ float atan2_approx(float y, float x)
 float acos_approx(float x)
 {
     float xa = fabsf(x);
-    float result = fast_fsqrtf(1.0f - xa) * (1.5707288f + xa * (-0.2121144f + xa * (0.0742610f + (-0.0187293f * xa))));
+    float result = sqrtf(1.0f - xa) * (1.5707288f + xa * (-0.2121144f + xa * (0.0742610f + (-0.0187293f * xa))));
     if (x < 0.0f)
         return M_PIf - result;
     else
@@ -129,9 +115,25 @@ int gcd(int num, int denom)
     return gcd(denom, num % denom);
 }
 
+float powerf(float base, int exp) {
+    float result = base;
+    for (int count = 1; count < exp; count++) result *= base;
+
+    return result;
+}
+
 int32_t applyDeadband(const int32_t value, const int32_t deadband)
 {
     if (ABS(value) < deadband) {
+        return 0;
+    }
+
+    return value >= 0 ? value - deadband : value + deadband;
+}
+
+float fapplyDeadband(const float value, const float deadband)
+{
+    if (fabsf(value) < deadband) {
         return 0;
     }
 
@@ -164,7 +166,7 @@ float devVariance(stdev_t *dev)
 
 float devStandardDeviation(stdev_t *dev)
 {
-    return fast_fsqrtf(devVariance(dev));
+    return sqrtf(devVariance(dev));
 }
 
 float degreesToRadians(int16_t degrees)
@@ -189,7 +191,7 @@ void normalizeV(struct fp_vector *src, struct fp_vector *dest)
 {
     float length;
 
-    length = fast_fsqrtf(src->X * src->X + src->Y * src->Y + src->Z * src->Z);
+    length = sqrtf(src->X * src->X + src->Y * src->Y + src->Z * src->Z);
     if (length != 0) {
         dest->X = src->X / length;
         dest->Y = src->Y / length;

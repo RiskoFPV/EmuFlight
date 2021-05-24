@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -55,7 +55,7 @@
 
 #define SRXL2_MAX_CHANNELS             32
 #define SRXL2_FRAME_PERIOD_US   11000 // 5500 for DSMR
-#define SRXL2_CHANNEL_SHIFT            2
+#define SRXL2_CHANNEL_SHIFT            5
 #define SRXL2_CHANNEL_CENTER           0x8000
 
 #define SRXL2_PORT_BAUDRATE_DEFAULT    115200
@@ -458,13 +458,13 @@ static bool srxl2ProcessFrame(const rxRuntimeState_t *rxRuntimeState)
     return true;
 }
 
-static float srxl2ReadRawRC(const rxRuntimeState_t *rxRuntimeState, uint8_t channelIdx)
+static uint16_t srxl2ReadRawRC(const rxRuntimeState_t *rxRuntimeState, uint8_t channelIdx)
 {
     if (channelIdx >= rxRuntimeState->channelCount) {
         return 0;
     }
 
-    return ((float)(rxRuntimeState->channelData[channelIdx] >> SRXL2_CHANNEL_SHIFT) / 16) + SPEKTRUM_PULSE_OFFSET;
+    return SPEKTRUM_PULSE_OFFSET + ((rxRuntimeState->channelData[channelIdx] >> SRXL2_CHANNEL_SHIFT) >> 1);
 }
 
 void srxl2RxWriteData(const void *data, int len)

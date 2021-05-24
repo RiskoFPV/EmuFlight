@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -1637,50 +1637,41 @@ bool SD_GetState(void)
 
 
 /** -----------------------------------------------------------------------------------------------------------------*/
-SD_Error_t SD_Init(void)
+bool SD_Init(void)
 {
-    SD_Error_t errorState;
+    SD_Error_t ErrorState;
 
     __HAL_RCC_SDMMC1_CLK_ENABLE();
 
-    // Initialize SDMMC1 peripheral interface with default configuration for SD card initialization.
+    // Initialize SDMMC1 peripheral interface with default configuration for SD card initialization
     MODIFY_REG(SDMMC1->CLKCR, CLKCR_CLEAR_MASK, (uint32_t) SDMMC_INIT_CLK_DIV);
 
-    // Identify card operating voltage.
-    errorState = SD_PowerON();
-    if (errorState != SD_OK) {
-        return errorState;
-    }
-
-    // Initialize the present card and put them in idle state.
-    errorState = SD_InitializeCard();
-    if (errorState != SD_OK) {
-        return errorState;
-    }
-
-    // Read CSD/CID MSD registers.
-    errorState = SD_GetCardInfo();
-    if (errorState != SD_OK) {
-        return errorState;
-    }
-
-    // Select the Card - Send CMD7 SDMMC_SEL_DESEL_CARD.
-    errorState = SD_TransmitCommand((SD_CMD_SEL_DESEL_CARD | SD_CMD_RESPONSE_SHORT), SD_CardRCA, 1);
-    // Configure SDMMC1 peripheral interface.
-    MODIFY_REG(SDMMC1->CLKCR, CLKCR_CLEAR_MASK, (uint32_t) SDMMC_CLK_DIV);
-
-    // Configure SD Bus width.
-    if (errorState == SD_OK)
+    if((ErrorState = SD_PowerON()) == SD_OK)                    // Identify card operating voltage
     {
-        // Enable wide operation.
-        if (sdioConfig()->use4BitWidth) {
-            errorState = SD_WideBusOperationConfig(SD_BUS_WIDE_4B);
-        } else {
-            errorState = SD_WideBusOperationConfig(SD_BUS_WIDE_1B);
+        if((ErrorState = SD_InitializeCard()) == SD_OK)         // Initialize the present card and put them in idle state
+        {
+            if((ErrorState = SD_GetCardInfo()) == SD_OK)        // Read CSD/CID MSD registers
+            {
+                // Select the Card - Send CMD7 SDMMC_SEL_DESEL_CARD
+                ErrorState = SD_TransmitCommand((SD_CMD_SEL_DESEL_CARD | SD_CMD_RESPONSE_SHORT), SD_CardRCA, 1);
+                MODIFY_REG(SDMMC1->CLKCR, CLKCR_CLEAR_MASK, (uint32_t) SDMMC_CLK_DIV); // Configure SDMMC1 peripheral interface
+            }
         }
     }
 
-    return errorState;
+    // Configure SD Bus width
+    if(ErrorState == SD_OK)
+    {
+        // Enable wide operation
+        if (sdioConfig()->use4BitWidth) {
+            ErrorState = SD_WideBusOperationConfig(SD_BUS_WIDE_4B);
+        } else {
+            ErrorState = SD_WideBusOperationConfig(SD_BUS_WIDE_1B);
+        }
+    }
+
+    // Configure the SDCARD device
+    return ErrorState;
 }
 
 /** -----------------------------------------------------------------------------------------------------------------*/

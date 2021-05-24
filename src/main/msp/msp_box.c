@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -66,7 +66,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] = {
 //    { BOXLLIGHTS, "LLIGHTS", 16 }, (removed)
     { BOXCALIB, "CALIB", 17 },
 //    { BOXGOV, "GOVERNOR", 18 }, (removed)
-    { BOXOSD, "OSD DISABLE", 19 },
+    { BOXOSD, "OSD DISABLE SW", 19 },
     { BOXTELEMETRY, "TELEMETRY", 20 },
 //    { BOXGTUNE, "GTUNE", 21 }, (removed)
 //    { BOXRANGEFINDER, "RANGEFINDER", 22 }, (removed)
@@ -76,7 +76,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] = {
     { BOXBLACKBOX, "BLACKBOX", 26 },
     { BOXFAILSAFE, "FAILSAFE", 27 },
     { BOXAIRMODE, "AIR MODE", 28 },
-    { BOX3D, "3D DISABLE / SWITCH", 29},
+    { BOX3D, "DISABLE / SWITCH 3D", 29},
     { BOXFPVANGLEMIX, "FPV ANGLE MIX", 30},
     { BOXBLACKBOXERASE, "BLACKBOX ERASE (>30s)", 31 },
     { BOXCAMERA1, "CAMERA CONTROL 1", 32},
@@ -84,7 +84,7 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] = {
     { BOXCAMERA3, "CAMERA CONTROL 3", 34 },
     { BOXFLIPOVERAFTERCRASH, "FLIP OVER AFTER CRASH", 35 },
     { BOXPREARM, "PREARM", 36 },
-    { BOXBEEPGPSCOUNT, "GPS BEEP SATELLITE COUNT", 37 },
+    { BOXBEEPGPSCOUNT, "BEEP GPS SATELLITE COUNT", 37 },
 //    { BOX3DONASWITCH, "3D ON A SWITCH", 38 }, (removed)
     { BOXVTXPITMODE, "VTX PIT MODE", 39 },
     { BOXUSER1, "USER1", 40 },
@@ -94,13 +94,9 @@ static const box_t boxes[CHECKBOX_ITEM_COUNT] = {
     { BOXPIDAUDIO, "PID AUDIO", 44 },
     { BOXPARALYZE, "PARALYZE", 45 },
     { BOXGPSRESCUE, "GPS RESCUE", 46 },
-//  { BOXACROTRAINER, "ACRO TRAINER", 47 }, (removed)
-    { BOXVTXCONTROLDISABLE, "VTX CONTROL DISABLE", 48},
+    { BOXACROTRAINER, "ACRO TRAINER", 47 },
+    { BOXVTXCONTROLDISABLE, "DISABLE VTX CONTROL", 48},
     { BOXLAUNCHCONTROL, "LAUNCH CONTROL", 49 },
-    { BOXMSPOVERRIDE, "MSP OVERRIDE", 50},
-    { BOXSTICKCOMMANDDISABLE, "STICK COMMANDS DISABLE", 51},
-    { BOXBEEPERMUTE, "BEEPER MUTE", 52},
-    { BOXNFE, "NFE RACE MODE", 53},
 };
 
 // mask of enabled IDs, calculated on startup based on enabled features. boxId_e is used as bit index
@@ -204,7 +200,6 @@ void initActiveBoxIds(void)
     if (sensors(SENSOR_ACC)) {
         BME(BOXANGLE);
         BME(BOXHORIZON);
-        BME(BOXNFE);
         BME(BOXHEADFREE);
         BME(BOXHEADADJ);
     }
@@ -233,7 +228,6 @@ void initActiveBoxIds(void)
     }
 
     BME(BOXBEEPERON);
-    BME(BOXBEEPERMUTE);
 
 #ifdef USE_LED_STRIP
     if (featureIsEnabled(FEATURE_LED_STRIP)) {
@@ -325,17 +319,15 @@ void initActiveBoxIds(void)
     BME(BOXPIDAUDIO);
 #endif
 
+#if defined(USE_ACRO_TRAINER) && defined(USE_ACC)
+    if (sensors(SENSOR_ACC)) {
+        BME(BOXACROTRAINER);
+    }
+#endif // USE_ACRO_TRAINER
+
 #ifdef USE_LAUNCH_CONTROL
     BME(BOXLAUNCHCONTROL);
 #endif
-
-#if defined(USE_RX_MSP_OVERRIDE)
-    if (rxConfig()->msp_override_channels_mask) {
-        BME(BOXMSPOVERRIDE);
-    }
-#endif
-
-    BME(BOXSTICKCOMMANDDISABLE);
 
 #undef BME
     // check that all enabled IDs are in boxes array (check may be skipped when using findBoxById() functions)

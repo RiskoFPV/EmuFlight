@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -37,15 +37,11 @@
 
 #include "barometer_bmp280.h"
 
-// 10 MHz max SPI frequency
-#define BMP280_MAX_SPI_CLK_HZ 10000000
-
 #if defined(USE_BARO) && (defined(USE_BARO_BMP280) || defined(USE_BARO_SPI_BMP280))
 
 
 #define BMP280_I2C_ADDR                      (0x76)
 #define BMP280_DEFAULT_CHIP_ID               (0x58)
-#define BME280_DEFAULT_CHIP_ID               (0x60)
 
 #define BMP280_CHIP_ID_REG                   (0xD0)  /* Chip ID Register */
 #define BMP280_RST_REG                       (0xE0)  /* Softreset Register */
@@ -126,9 +122,9 @@ void bmp280BusInit(busDevice_t *busdev)
         IOInit(busdev->busdev_u.spi.csnPin, OWNER_BARO_CS, 0);
         IOConfigGPIO(busdev->busdev_u.spi.csnPin, IOCFG_OUT_PP);
 #ifdef USE_SPI_TRANSACTION
-        spiBusTransactionInit(busdev, SPI_MODE0_POL_LOW_EDGE_1ST, spiCalculateDivider(BMP280_MAX_SPI_CLK_HZ)); // BMP280 supports Mode 0 or 3
+        spiBusTransactionInit(busdev, SPI_MODE0_POL_LOW_EDGE_1ST, SPI_CLOCK_STANDARD); // BMP280 supports Mode 0 or 3
 #else
-        spiBusSetDivisor(busdev, spiCalculateDivider(BMP280_MAX_SPI_CLK_HZ));
+        spiBusSetDivisor(busdev, SPI_CLOCK_STANDARD);
 #endif
     }
 #else
@@ -166,15 +162,13 @@ bool bmp280Detect(baroDev_t *baro)
 
     busReadRegisterBuffer(busdev, BMP280_CHIP_ID_REG, &bmp280_chip_id, 1);  /* read Chip Id */
 
-    if ((bmp280_chip_id != BMP280_DEFAULT_CHIP_ID) && (bmp280_chip_id != BME280_DEFAULT_CHIP_ID)) {
+    if (bmp280_chip_id != BMP280_DEFAULT_CHIP_ID) {
         bmp280BusDeinit(busdev);
         if (defaultAddressApplied) {
             busdev->busdev_u.i2c.address = 0;
         }
         return false;
     }
-
-    busDeviceRegister(busdev);
 
     // read calibration
     busReadRegisterBuffer(busdev, BMP280_TEMPERATURE_CALIB_DIG_T1_LSB_REG, (uint8_t *)&bmp280_cal, sizeof(bmp280_calib_param_t));

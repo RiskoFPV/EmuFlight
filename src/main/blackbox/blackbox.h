@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -38,14 +38,6 @@ typedef enum BlackboxMode {
     BLACKBOX_MODE_ALWAYS_ON
 } BlackboxMode;
 
-typedef enum BlackboxSampleRate { // Sample rate is 1/(2^BlackboxSampleRate)
-    BLACKBOX_RATE_ONE = 0,
-    BLACKBOX_RATE_HALF,
-    BLACKBOX_RATE_QUARTER,
-    BLACKBOX_RATE_8TH,
-    BLACKBOX_RATE_16TH
-} BlackboxSampleRate_e;
-
 typedef enum FlightLogEvent {
     FLIGHT_LOG_EVENT_SYNC_BEEP = 0,
     FLIGHT_LOG_EVENT_AUTOTUNE_CYCLE_START = 10,   // UNUSED
@@ -59,9 +51,9 @@ typedef enum FlightLogEvent {
 } FlightLogEvent;
 
 typedef struct blackboxConfig_s {
-    uint8_t sample_rate; // sample rate
+    uint16_t p_ratio; // I-frame interval / P-frame interval
     uint8_t device;
-    uint32_t fields_disabled_mask;
+    uint8_t record_acc;
     uint8_t mode;
 } blackboxConfig_t;
 
@@ -75,8 +67,6 @@ void blackboxUpdate(timeUs_t currentTimeUs);
 void blackboxSetStartDateTime(const char *dateTime, timeMs_t timeNowMs);
 int blackboxCalculatePDenom(int rateNum, int rateDenom);
 uint8_t blackboxGetRateDenom(void);
-uint16_t blackboxGetPRatio(void);
-uint8_t blackboxCalculateSampleRate(uint16_t pRatio);
 void blackboxValidateConfig(void);
 void blackboxFinish(void);
 bool blackboxMayEditConfig(void);

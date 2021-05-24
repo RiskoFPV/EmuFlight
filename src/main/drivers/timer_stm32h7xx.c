@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -50,7 +50,7 @@ const timerDef_t timerDefinitions[HARDWARE_TIMER_DEFINITION_COUNT] = {
 };
 
 #if defined(USE_TIMER_MGMT)
-const timerHardware_t fullTimerHardware[FULL_TIMER_CHANNEL_COUNT] = {
+SLOW_CONST const timerHardware_t fullTimerHardware[FULL_TIMER_CHANNEL_COUNT] = {
 // Auto-generated from 'timer_def.h'
 // Port A
     DEF_TIM(TIM2, CH1, PA0, TIM_USE_ANY, 0, 0, 0),
@@ -160,7 +160,6 @@ const timerHardware_t fullTimerHardware[FULL_TIMER_CHANNEL_COUNT] = {
 };
 #endif
 
-
 uint32_t timerClock(TIM_TypeDef *tim)
 {
     int timpre;
@@ -168,27 +167,16 @@ uint32_t timerClock(TIM_TypeDef *tim)
     uint32_t ppre;
 
     // Implement the table:
-    // RM0433 (Rev 6) Table 52.
-    // RM0455 (Rev 3) Table 55.
-    // "Ratio between clock timer and pclk"
-    // (Tables are the same, just D2 or CD difference)
-
-#if defined(STM32H743xx) || defined(STM32H750xx) || defined(STM32H723xx) || defined(STM32H725xx)
-#define PERIPH_PRESCALER(bus) ((RCC->D2CFGR & RCC_D2CFGR_D2PPRE ## bus) >> RCC_D2CFGR_D2PPRE ## bus ## _Pos)
-#elif defined(STM32H7A3xx) || defined(STM32H7A3xxQ)
-#define PERIPH_PRESCALER(bus) ((RCC->CDCFGR2 & RCC_CDCFGR2_CDPPRE ## bus) >> RCC_CDCFGR2_CDPPRE ## bus ## _Pos)
-#else
-#error Unknown MCU type
-#endif
+    // RM0433 "Table 48. Ratio between clock timer and pclk"
 
     if (tim == TIM1 || tim == TIM8 || tim == TIM15 || tim == TIM16 || tim == TIM17) {
         // Timers on APB2
         pclk = HAL_RCC_GetPCLK2Freq();
-        ppre = PERIPH_PRESCALER(2);
+        ppre = (RCC->D2CFGR & RCC_D2CFGR_D2PPRE2) >> RCC_D2CFGR_D2PPRE2_Pos;
     } else {
         // Timers on APB1
         pclk = HAL_RCC_GetPCLK1Freq();
-        ppre = PERIPH_PRESCALER(1);
+        ppre = (RCC->D2CFGR & RCC_D2CFGR_D2PPRE1) >> RCC_D2CFGR_D2PPRE1_Pos;
     }
 
     timpre = (RCC->CFGR & RCC_CFGR_TIMPRE) ? 1 : 0;
@@ -201,7 +189,5 @@ uint32_t timerClock(TIM_TypeDef *tim)
     };
 
     return pclk * periphToKernel[index];
-
-#undef PERIPH_PRESCALER
 }
 #endif

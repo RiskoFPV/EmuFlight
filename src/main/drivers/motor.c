@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -42,7 +42,7 @@
 
 #include "motor.h"
 
-static FAST_DATA_ZERO_INIT motorDevice_t *motorDevice;
+static FAST_RAM_ZERO_INIT motorDevice_t *motorDevice;
 
 static bool motorProtocolEnabled = false;
 static bool motorProtocolDshot = false;
@@ -106,6 +106,8 @@ bool checkMotorProtocolEnabled(const motorDevConfig_t *motorDevConfig, bool *isP
 
     switch (motorDevConfig->motorPwmProtocol) {
     case PWM_TYPE_STANDARD:
+    case PWM_TYPE_ONESHOT125:
+    case PWM_TYPE_ONESHOT42:
     case PWM_TYPE_MULTISHOT:
     case PWM_TYPE_BRUSHED:
         enabled = true;
@@ -116,9 +118,6 @@ bool checkMotorProtocolEnabled(const motorDevConfig_t *motorDevConfig, bool *isP
     case PWM_TYPE_DSHOT150:
     case PWM_TYPE_DSHOT300:
     case PWM_TYPE_DSHOT600:
-    case PWM_TYPE_DSHOT1200:
-    case PWM_TYPE_DSHOT2400:
-    case PWM_TYPE_DSHOT4800:
     case PWM_TYPE_PROSHOT1000:
         enabled = true;
         isDshot = true;
@@ -327,15 +326,9 @@ timeMs_t motorGetMotorEnableTimeMs(void)
 #endif
 
 #ifdef USE_DSHOT_BITBANG
-bool isDshotBitbangActive(const motorDevConfig_t *motorDevConfig)
-{
+bool isDshotBitbangActive(const motorDevConfig_t *motorDevConfig) {
     return motorDevConfig->useDshotBitbang == DSHOT_BITBANG_ON ||
         (motorDevConfig->useDshotBitbang == DSHOT_BITBANG_AUTO && motorDevConfig->useDshotTelemetry && motorDevConfig->motorPwmProtocol != PWM_TYPE_PROSHOT1000);
 }
 #endif
-
-float getDigitalIdleOffset(const motorConfig_t *motorConfig)
-{
-    return CONVERT_PARAMETER_TO_PERCENT(motorConfig->digitalIdleOffsetValue * 0.01f);
-}
 #endif // USE_MOTOR

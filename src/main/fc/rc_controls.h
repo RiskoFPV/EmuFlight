@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -70,6 +70,18 @@ typedef enum {
     RC_SMOOTHING_TYPE_FILTER
 } rcSmoothingType_e;
 
+typedef enum {
+    RC_SMOOTHING_INPUT_PT1,
+    RC_SMOOTHING_INPUT_BIQUAD
+} rcSmoothingInputFilter_e;
+
+typedef enum {
+    RC_SMOOTHING_DERIVATIVE_OFF,
+    RC_SMOOTHING_DERIVATIVE_PT1,
+    RC_SMOOTHING_DERIVATIVE_BIQUAD,
+    RC_SMOOTHING_DERIVATIVE_AUTO,
+} rcSmoothingDerivativeFilter_e;
+
 #define ROL_LO (1 << (2 * ROLL))
 #define ROL_CE (3 << (2 * ROLL))
 #define ROL_HI (2 << (2 * ROLL))
@@ -87,10 +99,13 @@ typedef enum {
 
 #define CONTROL_RATE_CONFIG_RC_RATES_MAX  255
 
+#define CONTROL_RATE_CONFIG_RATE_LIMIT_MIN	200
+#define CONTROL_RATE_CONFIG_RATE_LIMIT_MAX	1998
+
 // (Super) rates are constrained to [0, 100] for Betaflight rates, so values higher than 100 won't make a difference. Range extended for RaceFlight rates.
 #define CONTROL_RATE_CONFIG_RATE_MAX  255
 
-#define CONTROL_RATE_CONFIG_TPA_MAX              200
+#define CONTROL_RATE_CONFIG_TPA_MAX              100
 
 extern float rcCommand[4];
 
@@ -101,22 +116,25 @@ typedef struct rcSmoothingFilterTraining_s {
     uint16_t max;
 } rcSmoothingFilterTraining_t;
 
+typedef union rcSmoothingFilterTypes_u {
+    pt1Filter_t pt1Filter;
+    biquadFilter_t biquadFilter;
+} rcSmoothingFilterTypes_t;
+
 typedef struct rcSmoothingFilter_s {
     bool filterInitialized;
-    ptnFilter_t filter[4];
+    rcSmoothingFilterTypes_t filter[4];
+    rcSmoothingInputFilter_e inputFilterType;
     uint8_t inputCutoffSetting;
     uint16_t inputCutoffFrequency;
+    rcSmoothingDerivativeFilter_e derivativeFilterTypeSetting;
+    rcSmoothingDerivativeFilter_e derivativeFilterType;
     uint8_t derivativeCutoffSetting;
     uint16_t derivativeCutoffFrequency;
     int averageFrameTimeUs;
     rcSmoothingFilterTraining_t training;
     uint8_t debugAxis;
     uint8_t autoSmoothnessFactor;
-#ifdef USE_RC_PREDICTOR
-    pt1Filter_t velocityLpf[4];
-    float predictorPercent;
-    float predictorTime;
-#endif
 } rcSmoothingFilter_t;
 
 typedef struct rcControlsConfig_s {
@@ -137,8 +155,6 @@ typedef struct flight3DConfig_s {
     uint16_t limit3d_low;                   // pwm output value for max negative thrust
     uint16_t limit3d_high;                  // pwm output value for max positive thrust
     uint8_t switched_mode3d;                // enable '3D Switched Mode'
-    uint8_t reverse3dKick;                  // how hard the throttle kick is
-    uint8_t reverse3dKickTime;             // how long the throttle kick is
 } flight3DConfig_t;
 
 PG_DECLARE(flight3DConfig_t, flight3DConfig);

@@ -37,7 +37,6 @@
 
 #include "platform.h"
 
-#ifdef USE_ACCGYRO_BMI160
 
 #include "drivers/bus_spi.h"
 #include "drivers/exti.h"
@@ -49,9 +48,17 @@
 #include "accgyro.h"
 #include "accgyro_spi_bmi160.h"
 
+#ifdef USE_ACCGYRO_BMI160
+#if defined(USE_CHIBIOS)
+#include "ch.h"
+extern binary_semaphore_t gyroSem;
+bool gyro_sample_processed = false;
+#endif
 
-// 10 MHz max SPI frequency
-#define BMI160_MAX_SPI_CLK_HZ 10000000
+#if defined(BRAINFPV)
+#include "brainfpv/brainfpv_osd.h"
+#endif
+
 
 /* BMI160 Registers */
 #define BMI160_REG_CHIPID 0x00
@@ -90,7 +97,7 @@ static volatile bool BMI160Detected = false;
 
 //! Private functions
 static int32_t BMI160_Config(const busDevice_t *bus);
-static int32_t BMI160_do_foc(const busDevice_t *bus);
+static int16_t BMI160_do_foc(const busDevice_t *bus);
 
 uint8_t bmi160Detect(const busDevice_t *bus)
 {
@@ -98,7 +105,8 @@ uint8_t bmi160Detect(const busDevice_t *bus)
         return BMI_160_SPI;
     }
 
-    spiSetDivisor(bus->busdev_u.spi.instance, spiCalculateDivider(BMI160_MAX_SPI_CLK_HZ));
+
+    spiSetDivisor(bus->busdev_u.spi.instance, BMI160_SPI_DIVISOR);
 
     /* Read this address to activate SPI (see p. 84) */
     spiBusReadRegister(bus, 0x7F);
@@ -129,12 +137,15 @@ static void BMI160_Init(const busDevice_t *bus)
         return;
     }
 
-    bool do_foc = false;
-
+#ifdef BRAINFPV
     /* Perform fast offset compensation if requested */
-    if (do_foc) {
-        BMI160_do_foc(bus);
+    if (bfOsdConfig()->bmi160foc) {
+        int16_t foc_ret = BMI160_do_foc(bus);
+        bfOsdConfigMutable()->bmi160foc = false;
+        bfOsdConfigMutable()->bmi160foc_ret = foc_ret;
+        writeEEPROM();
     }
+#endif
 
     BMI160InitDone = true;
 }
@@ -193,7 +204,7 @@ static int32_t BMI160_Config(const busDevice_t *bus)
     return 0;
 }
 
-static int32_t BMI160_do_foc(const busDevice_t *bus)
+static int16_t BMI160_do_foc(const busDevice_t *bus)
 {
     // assume sensor is mounted on top
     uint8_t val = 0x7D;;
@@ -203,7 +214,7 @@ static int32_t BMI160_do_foc(const busDevice_t *bus)
     spiBusWriteRegister(bus, BMI160_REG_CMD, BMI160_CMD_START_FOC);
 
     // Wait for FOC to complete
-    for (int i=0; i<50; i++) {
+    for (int i=0; i<200; i++) {
         val = spiBusReadRegister(bus, BMI160_REG_STATUS);
         if (val & BMI160_REG_STATUS_FOC_RDY) {
             break;
@@ -238,11 +249,27 @@ static int32_t BMI160_do_foc(const busDevice_t *bus)
 extiCallbackRec_t bmi160IntCallbackRec;
 
 #if defined(USE_MPU_DATA_READY_SIGNAL)
+#if defined(USE_CHIBIOS)
+void bmi160ExtiHandler(extiCallbackRec_t *cb)
+{
+    CH_IRQ_PROLOGUE();
+
+    gyroDev_t *gyro = container_of(cb, gyroDev_t, exti);
+    gyro->dataReady = true;
+
+    chSysLockFromISR();
+    gyro_sample_processed = false;
+    chBSemSignalI(&gyroSem);
+    chSysUnlockFromISR();
+    CH_IRQ_EPILOGUE();
+}
+#else
 void bmi160ExtiHandler(extiCallbackRec_t *cb)
 {
     gyroDev_t *gyro = container_of(cb, gyroDev_t, exti);
     gyro->dataReady = true;
 }
+#endif
 
 static void bmi160IntExtiInit(gyroDev_t *gyro)
 {
@@ -311,6 +338,10 @@ bool bmi160GyroRead(gyroDev_t *gyro)
     gyro->gyroADCRaw[Y] = (int16_t)((bmi160_rx_buf[IDX_GYRO_YOUT_H] << 8) | bmi160_rx_buf[IDX_GYRO_YOUT_L]);
     gyro->gyroADCRaw[Z] = (int16_t)((bmi160_rx_buf[IDX_GYRO_ZOUT_H] << 8) | bmi160_rx_buf[IDX_GYRO_ZOUT_L]);
 
+#if defined(USE_CHIBIOS)
+    gyro_sample_processed = true;
+#endif
+
     return true;
 }
 
@@ -352,7 +383,7 @@ bool bmi160SpiGyroDetect(gyroDev_t *gyro)
 
     gyro->initFn = bmi160SpiGyroInit;
     gyro->readFn = bmi160GyroRead;
-    gyro->scale = GYRO_SCALE_2000DPS;
+    gyro->scale = 1.0f / 16.4f;
 
     return true;
 }

@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -29,6 +29,10 @@ typedef struct rpmFilterConfig_s
     uint8_t  gyro_rpm_notch_min;         // minimum frequency of the notches
     uint16_t gyro_rpm_notch_q;           // q of the notches
 
+    uint8_t  dterm_rpm_notch_harmonics;  // how many harmonics should be covered with notches? 0 means filter off
+    uint8_t  dterm_rpm_notch_min;        // minimum frequency of the notches
+    uint16_t dterm_rpm_notch_q;          // q of the notches
+
     uint16_t rpm_lpf;                    // the cutoff of the lpf on reported motor rpm
 } rpmFilterConfig_t;
 
@@ -36,6 +40,7 @@ PG_DECLARE(rpmFilterConfig_t, rpmFilterConfig);
 
 void  rpmFilterInit(const rpmFilterConfig_t *config);
 float rpmFilterGyro(int axis, float values);
+float rpmFilterDterm(int axis, float values);
 void  rpmFilterUpdate();
 bool isRpmFilterEnabled(void);
 float rpmMinMotorFrequency();

@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -38,7 +38,6 @@
 #include "common/maths.h"
 #include "common/printf_serial.h"
 
-#include "config/config.h"
 #include "config/config_eeprom.h"
 #include "config/feature.h"
 
@@ -84,6 +83,7 @@
 #include "drivers/vtx_table.h"
 
 #include "fc/board_info.h"
+#include "config/config.h"
 #include "fc/dispatch.h"
 #include "fc/init.h"
 #include "fc/rc_controls.h"
@@ -95,19 +95,22 @@
 #include "flight/imu.h"
 #include "flight/mixer.h"
 #include "flight/pid.h"
-#include "flight/pid_init.h"
+#include "flight/rpm_filter.h"
 #include "flight/servos.h"
 
 #include "io/asyncfatfs/asyncfatfs.h"
 #include "io/beeper.h"
 #include "io/dashboard.h"
+#include "io/displayport_crsf.h"
 #include "io/displayport_frsky_osd.h"
 #include "io/displayport_max7456.h"
 #include "io/displayport_msp.h"
+#include "io/displayport_srxl.h"
 #include "io/flashfs.h"
 #include "io/gimbal.h"
 #include "io/gps.h"
 #include "io/ledstrip.h"
+#include "io/motors.h"
 #include "io/pidaudio.h"
 #include "io/piniobox.h"
 #include "io/rcdevice_cam.h"
@@ -170,6 +173,15 @@
 #ifdef USE_HARDWARE_REVISION_DETECTION
 #include "hardware_revision.h"
 #endif
+
+#ifdef USE_BRAINFPV_FPGA
+#include "fpga_drv.h"
+#endif
+
+#include "build/build_config.h"
+#include "build/debug.h"
+
+extern uint8_t safe_boot;
 
 #ifdef TARGET_PREINIT
 void targetPreInit(void);
@@ -303,7 +315,7 @@ static void swdPinsInit(void)
     }
 }
 
-void init(void)
+SLOW_CODE void init(void)
 {
 #ifdef SERIAL_PORT_COUNT
     printfSerialInit();
@@ -334,6 +346,7 @@ void init(void)
         SPI_AND_QSPI_INIT_ATTEMPTED      = (1 << 2),
     };
     uint8_t initFlags = 0;
+
 
 #ifdef CONFIG_IN_SDCARD
 
@@ -442,16 +455,6 @@ void init(void)
 
     systemState |= SYSTEM_STATE_CONFIG_LOADED;
 
-#ifdef USE_SDCARD
-    // Ensure the SD card is initialised before the USB MSC starts to avoid a race condition
-#if !defined(CONFIG_IN_SDCARD) && defined(STM32H7) && defined(USE_SDCARD_SDIO) // H7 only for now, likely should be applied to F4/F7 too
-    sdioPinConfigure();
-    SDIO_GPIO_Init();
-    initFlags |= SD_INIT_ATTEMPTED;
-    sdCardAndFSInit();
-#endif
-#endif
-
 #ifdef USE_BRUSHED_ESC_AUTODETECT
     // Now detect again with the actually configured pin for motor 1, if it is not the default pin.
     ioTag_t configuredMotorIoTag = motorConfig()->dev.ioTags[0];
@@ -536,9 +539,8 @@ void init(void)
     }
 #endif
 
-#if defined(STM32F4) || defined(STM32G4)
-    // F4 has non-8MHz boards
-    // G4 for Betaflight allow 24 or 27MHz oscillator
+#ifdef STM32F4
+    // Only F4 has non-8MHz boards
     systemClockSetHSEValue(systemConfig()->hseMhz * 1000000U);
 #endif
 
@@ -588,6 +590,7 @@ void init(void)
 #endif
 
     mixerInit(mixerConfig()->mixerMode);
+    mixerConfigureOutput();
 
     uint16_t idlePulse = motorConfig()->mincommand;
     if (featureIsEnabled(FEATURE_3D)) {
@@ -618,7 +621,7 @@ void init(void)
     }
 #endif
 
-#ifdef USE_BEEPER
+#if defined(USE_BEEPER)
     beeperInit(beeperDevConfig());
 #endif
 /* temp until PGs are implemented. */
@@ -642,7 +645,7 @@ void init(void)
 /* MSC mode will start after init, but will not allow scheduler to run,
  *  so there is no bottleneck in reading and writing data */
     mscInit();
-    if (mscCheckBootAndReset() || mscCheckButton()) {
+    if (mscCheckBoot() || mscCheckButton()) {
         ledInit(statusLedConfig());
 
 #if defined(USE_FLASHFS)
@@ -689,9 +692,22 @@ void init(void)
 
 #endif // TARGET_BUS_INIT
 
+#ifdef USE_BRAINFPV_FPGA
+    BRAINFPVFPGA_Init(true);
+    brainFPVUpdateSettings();
+#endif
+
 #ifdef USE_HARDWARE_REVISION_DETECTION
     updateHardwareRevision();
 #endif
+
+#if defined(STM32H7) && defined(USE_SDCARD_SDIO) // H7 only for now, likely should be applied to F4/F7 too
+    if (!(initFlags & SD_INIT_ATTEMPTED)) {
+        sdioPinConfigure();
+        SDIO_GPIO_Init();
+    }
+#endif
+
 
 #ifdef USE_VTX_RTC6705
     bool useRTC6705 = rtc6705IOInit(vtxIOConfig());
@@ -699,6 +715,20 @@ void init(void)
 
 #ifdef USE_CAMERA_CONTROL
     cameraControlInit();
+#endif
+
+// XXX These kind of code should goto target/config.c?
+// XXX And these no longer work properly as FEATURE_RANGEFINDER does control HCSR04 runtime configuration.
+#if defined(RANGEFINDER_HCSR04_SOFTSERIAL2_EXCLUSIVE) && defined(USE_RANGEFINDER_HCSR04) && defined(USE_SOFTSERIAL2)
+    if (featureIsEnabled(FEATURE_RANGEFINDER) && featureIsEnabled(FEATURE_SOFTSERIAL)) {
+        serialRemovePort(SERIAL_PORT_SOFTSERIAL2);
+    }
+#endif
+
+#if defined(RANGEFINDER_HCSR04_SOFTSERIAL1_EXCLUSIVE) && defined(USE_RANGEFINDER_HCSR04) && defined(USE_SOFTSERIAL1)
+    if (featureIsEnabled(FEATURE_RANGEFINDER) && featureIsEnabled(FEATURE_SOFTSERIAL)) {
+        serialRemovePort(SERIAL_PORT_SOFTSERIAL1);
+    }
 #endif
 
 #ifdef USE_ADC
@@ -735,14 +765,13 @@ void init(void)
 
     pidInit(currentPidProfile);
 
-    mixerInitProfile();
-
 #ifdef USE_PID_AUDIO
     pidAudioInit();
 #endif
 
 #ifdef USE_SERVOS
     servosInit();
+    servoConfigureOutput();
     if (isMixerUsingServos()) {
         //pwm_params.useChannelForwarding = featureIsEnabled(FEATURE_CHANNEL_FORWARDING);
         servoDevInit(&servoConfig()->dev);
@@ -956,7 +985,20 @@ void init(void)
 #if defined(USE_MAX7456)
         case OSD_DISPLAYPORT_DEVICE_MAX7456:
             // If there is a max7456 chip for the OSD configured and detectd then use it.
-            if (max7456DisplayPortInit(vcdProfile(), &osdDisplayPort) || device == OSD_DISPLAYPORT_DEVICE_MAX7456) {
+#if defined(USE_BRAINFPV_OSD)
+            {
+                Video_Init();
+
+                vcdProfile_t vcdProfile_ = {
+                    .video_system=VIDEO_SYSTEM_AUTO,
+                    .h_offset = 0,
+                    .v_offset = 0};
+                osdDisplayPort = max7456DisplayPortInit(&vcdProfile_);
+            }
+#else
+            osdDisplayPort = max7456DisplayPortInit(vcdProfile());
+#endif
+            if (osdDisplayPort || device == OSD_DISPLAYPORT_DEVICE_MAX7456) {
                 osdDisplayPortDevice = OSD_DISPLAYPORT_DEVICE_MAX7456;
                 break;
             }
@@ -982,10 +1024,6 @@ void init(void)
 
         // osdInit will register with CMS by itself.
         osdInit(osdDisplayPort, osdDisplayPortDevice);
-
-        if (osdDisplayPortDevice == OSD_DISPLAYPORT_DEVICE_NONE) {
-            featureDisableImmediate(FEATURE_OSD);
-        }
     }
 #endif // USE_OSD
 
@@ -1007,6 +1045,15 @@ void init(void)
         dashboardEnablePageCycling();
 #endif
     }
+#endif
+
+#if defined(USE_CMS) && defined(USE_SPEKTRUM_CMS_TELEMETRY) && defined(USE_TELEMETRY_SRXL)
+    // Register the srxl Textgen telemetry sensor as a displayport device
+    cmsDisplayPortRegister(displayPortSrxlInit());
+#endif
+
+#if defined(USE_CMS) && defined(USE_CRSF_CMS_TELEMETRY)
+    cmsDisplayPortRegister(displayPortCrsfInit());
 #endif
 
     setArmingDisabled(ARMING_DISABLED_BOOT_GRACE_TIME);

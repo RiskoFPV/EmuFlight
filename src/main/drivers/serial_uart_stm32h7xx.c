@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -106,7 +106,7 @@ const uartHardware_t uartHardware[UARTDEV_COUNT] = {
         },
         .txPins = {
             { DEFIO_TAG_E(PA9),  GPIO_AF7_USART1 },
-            { DEFIO_TAG_E(PB6),  GPIO_AF4_USART1 },
+            { DEFIO_TAG_E(PB6),  GPIO_AF7_USART1 },
             { DEFIO_TAG_E(PB14), GPIO_AF4_USART1 },
         },
         .rcc = RCC_APB2(USART1),
@@ -405,7 +405,7 @@ uartPort_t *serialUART(UARTDevice_e device, uint32_t baudRate, portMode_e mode, 
 
     if ((options & SERIAL_BIDIR) && txIO) {
         ioConfig_t ioCfg = IO_CONFIG(
-            ((options & SERIAL_INVERTED) || (options & SERIAL_BIDIR_PP) || (options & SERIAL_BIDIR_PP_PD)) ? GPIO_MODE_AF_PP : GPIO_MODE_AF_OD,
+            ((options & SERIAL_INVERTED) || ((options & SERIAL_BIDIR_PP) || (options & SERIAL_BIDIR_PP_PD))) ? GPIO_MODE_AF_PP : GPIO_MODE_AF_OD,
             GPIO_SPEED_FREQ_HIGH,
             ((options & SERIAL_INVERTED) || (options & SERIAL_BIDIR_PP_PD)) ? GPIO_PULLDOWN : GPIO_PULLUP
         );

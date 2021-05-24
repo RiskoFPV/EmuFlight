@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -39,9 +39,6 @@
 #include "drivers/accgyro/accgyro.h"
 
 #include "accgyro_spi_l3gd20.h"
-
-// 10 MHz max SPI frequency
-#define L3GD20_MAX_SPI_CLK_HZ 10000000
 
 #define READ_CMD               ((uint8_t)0x80)
 #define MULTIPLEBYTE_CMD       ((uint8_t)0x40)
@@ -101,7 +98,7 @@ static void l3gd20IntExtiInit(gyroDev_t *gyro)
 
 void l3gd20GyroInit(gyroDev_t *gyro)
 {
-    spiSetDivisor(gyro->bus.busdev_u.spi.instance, spiCalculateDivider(L3GD20_MAX_SPI_CLK_HZ));
+    spiSetDivisor(gyro->bus.busdev_u.spi.instance, SPI_CLOCK_STANDARD);
 
     spiBusWriteRegister(&gyro->bus, CTRL_REG5_ADDR, BOOT);
 

@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -35,6 +35,7 @@
 #include "pg/stats.h"
 
 
+#define MIN_FLIGHT_TIME_TO_RECORD_STATS_S 10 // Prevent recording stats for that short "flights" [s]
 #define STATS_SAVE_DELAY_US 500000 // Let disarming complete and save stats after this time
 
 static timeMs_t arm_millis;
@@ -84,13 +85,12 @@ void statsOnArm(void)
 
 void statsOnDisarm(void)
 {
-    int8_t minArmedTimeS = statsConfig()->stats_min_armed_time_s;
-    if (minArmedTimeS >= 0) {
-        uint32_t dtS = (millis() - arm_millis) / 1000;
-        if (dtS >= (uint8_t)minArmedTimeS) {
-            statsConfigMutable()->stats_total_flights += 1;    // arm / flight counter
-            statsConfigMutable()->stats_total_time_s += dtS;
-            statsConfigMutable()->stats_total_dist_m += (DISTANCE_FLOWN_CM - arm_distance_cm) / 100;
+    if (statsConfig()->stats_enabled) {
+        uint32_t dt = (millis() - arm_millis) / 1000;
+        if (dt >= MIN_FLIGHT_TIME_TO_RECORD_STATS_S) {
+            statsConfigMutable()->stats_total_flights += 1;    //arm/flight counter
+            statsConfigMutable()->stats_total_time_s += dt;   //[s]
+            statsConfigMutable()->stats_total_dist_m += (DISTANCE_FLOWN_CM - arm_distance_cm) / 100;   //[m]
 
             saveRequired = true;
         }

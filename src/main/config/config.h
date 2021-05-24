@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -24,6 +24,10 @@
 #include <stdbool.h>
 
 #include "pg/pg.h"
+
+#if defined(USE_BRAINFPV_OSD)
+#include "brainfpv/brainfpv_osd.h"
+#endif
 
 #define MAX_NAME_LENGTH 16u
 
@@ -55,8 +59,8 @@ typedef struct systemConfig_s {
     uint8_t cpu_overclock;
     uint8_t powerOnArmingGraceTime; // in seconds
     char boardIdentifier[sizeof(TARGET_BOARD_IDENTIFIER) + 1];
-    uint8_t hseMhz;                 // Only used for F4 and G4 targets
-    uint8_t configurationState;     // The state of the configuration (defaults / configured)
+    uint8_t hseMhz; // Not used for non-F4 targets
+    uint8_t configurationState; // The state of the configuration (defaults / configured)
     uint8_t schedulerOptimizeRate;
     uint8_t enableStickArming; // boolean that determines whether stick arming can be used
 } systemConfig_t;

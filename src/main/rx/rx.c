@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -43,7 +43,6 @@
 
 #include "fc/rc_controls.h"
 #include "fc/rc_modes.h"
-#include "fc/tasks.h"
 
 #include "flight/failsafe.h"
 
@@ -66,10 +65,8 @@
 #include "rx/ibus.h"
 #include "rx/jetiexbus.h"
 #include "rx/crsf.h"
-#include "rx/ghst.h"
 #include "rx/rx_spi.h"
 #include "rx/targetcustomserial.h"
-#include "rx/msp_override.h"
 
 
 const char rcChannelLetters[] = "AERT12345678abcdefgh";
@@ -83,10 +80,6 @@ static pt1Filter_t frameErrFilter;
 #ifdef USE_RX_LINK_QUALITY_INFO
 static uint16_t linkQuality = 0;
 static uint8_t rfMode = 0;
-#endif
-
-#ifdef USE_RX_LINK_UPLINK_POWER
-static uint16_t uplinkTxPwrMw = 0;  //Uplink Tx power in mW
 #endif
 
 #define MSP_RSSI_TIMEOUT_US 1500000   // 1.5 sec
@@ -111,8 +104,8 @@ static uint32_t needRxSignalMaxDelayUs;
 static uint32_t suspendRxSignalUntil = 0;
 static uint8_t  skipRxSamples = 0;
 
-static float rcRaw[MAX_SUPPORTED_RC_CHANNEL_COUNT];     // interval [1000;2000]
-float rcData[MAX_SUPPORTED_RC_CHANNEL_COUNT];           // interval [1000;2000]
+static int16_t rcRaw[MAX_SUPPORTED_RC_CHANNEL_COUNT];     // interval [1000;2000]
+int16_t rcData[MAX_SUPPORTED_RC_CHANNEL_COUNT];     // interval [1000;2000]
 uint32_t rcInvalidPulsPeriod[MAX_SUPPORTED_RC_CHANNEL_COUNT];
 
 #define MAX_INVALID_PULS_TIME    300
@@ -158,7 +151,7 @@ void resetAllRxChannelRangeConfigurations(rxChannelRangeConfig_t *rxChannelRange
     }
 }
 
-static float nullReadRawRC(const rxRuntimeState_t *rxRuntimeState, uint8_t channel)
+static uint16_t nullReadRawRC(const rxRuntimeState_t *rxRuntimeState, uint8_t channel)
 {
     UNUSED(rxRuntimeState);
     UNUSED(channel);
@@ -237,11 +230,6 @@ static bool serialRxInit(const rxConfig_t *rxConfig, rxRuntimeState_t *rxRuntime
 #ifdef USE_SERIALRX_CRSF
     case SERIALRX_CRSF:
         enabled = crsfRxInit(rxConfig, rxRuntimeState);
-        break;
-#endif
-#ifdef USE_SERIALRX_GHST
-    case SERIALRX_GHST:
-        enabled = ghstRxInit(rxConfig, rxRuntimeState);
         break;
 #endif
 #ifdef USE_SERIALRX_TARGET_CUSTOM
@@ -430,7 +418,7 @@ static void setLinkQuality(bool validFrame, timeDelta_t currentDeltaTimeUs)
     static timeDelta_t resampleTimeUs = 0;
 
 #ifdef USE_RX_LINK_QUALITY_INFO
-    if (linkQualitySource == LQ_SOURCE_NONE) {
+    if (linkQualitySource != LQ_SOURCE_RX_PROTOCOL_CRSF) {
         // calculate new sample mean
         linkQuality = updateLinkQualitySamples(validFrame ? LINK_QUALITY_MAX_VALUE : 0);
     }
@@ -459,22 +447,10 @@ void setLinkQualityDirect(uint16_t linkqualityValue)
 #endif
 }
 
-#ifdef USE_RX_LINK_UPLINK_POWER
-void rxSetUplinkTxPwrMw(uint16_t uplinkTxPwrMwValue)
-{
-    uplinkTxPwrMw = uplinkTxPwrMwValue;
-}
-#endif
-
 bool rxUpdateCheck(timeUs_t currentTimeUs, timeDelta_t currentDeltaTimeUs)
 {
     bool signalReceived = false;
     bool useDataDrivenProcessing = true;
-
-    if (taskUpdateRxMainInProgress()) {
-        // There are more states to process
-        return true;
-    }
 
     switch (rxRuntimeState.rxProvider) {
     default:
@@ -595,15 +571,15 @@ static uint16_t getRxfailValue(uint8_t channel)
     }
 }
 
-STATIC_UNIT_TESTED float applyRxChannelRangeConfiguraton(float sample, const rxChannelRangeConfig_t *range)
+STATIC_UNIT_TESTED uint16_t applyRxChannelRangeConfiguraton(int sample, const rxChannelRangeConfig_t *range)
 {
     // Avoid corruption of channel with a value of PPM_RCVR_TIMEOUT
     if (sample == PPM_RCVR_TIMEOUT) {
         return PPM_RCVR_TIMEOUT;
     }
 
-    sample = scaleRangef(sample, range->min, range->max, PWM_RANGE_MIN, PWM_RANGE_MAX);
-    sample = constrainf(sample, PWM_PULSE_MIN, PWM_PULSE_MAX);
+    sample = scaleRange(sample, range->min, range->max, PWM_RANGE_MIN, PWM_RANGE_MAX);
+    sample = constrain(sample, PWM_PULSE_MIN, PWM_PULSE_MAX);
 
     return sample;
 }
@@ -615,15 +591,7 @@ static void readRxChannelsApplyRanges(void)
         const uint8_t rawChannel = channel < RX_MAPPABLE_CHANNEL_COUNT ? rxConfig()->rcmap[channel] : channel;
 
         // sample the channel
-        float sample;
-#if defined(USE_RX_MSP_OVERRIDE)
-        if (rxConfig()->msp_override_channels_mask) {
-            sample = rxMspOverrideReadRawRc(&rxRuntimeState, rxConfig(), rawChannel);
-        } else
-#endif
-        {
-            sample = rxRuntimeState.rcReadRawFn(&rxRuntimeState, rawChannel);
-        }
+        uint16_t sample = rxRuntimeState.rcReadRawFn(&rxRuntimeState, rawChannel);
 
         // apply the rx calibration
         if (channel < NON_AUX_CHANNEL_COUNT) {
@@ -645,7 +613,7 @@ static void detectAndApplySignalLossBehaviour(void)
 
     rxFlightChannelsValid = true;
     for (int channel = 0; channel < rxChannelCount; channel++) {
-        float sample = rcRaw[channel];
+        uint16_t sample = rcRaw[channel];
 
         const bool validPulse = useValueFromRx && isPulseValid(sample);
 
@@ -774,6 +742,17 @@ void setRssiMsp(uint8_t newMspRssi)
     }
 }
 
+void setRssiCrsfLq(uint16_t crsf_lq)
+{
+    // If LQ is above 100, set RSSI to max
+    if (crsf_lq > 100) {
+        rssi = 1023;
+    }
+    else {
+        rssi = ((uint32_t)crsf_lq * 1023) / 100;
+    }
+}
+
 static void updateRSSIPWM(void)
 {
     // Read value of AUX channel as rssi
@@ -888,14 +867,7 @@ uint8_t rxGetRfMode(void)
 
 uint16_t rxGetLinkQualityPercent(void)
 {
-    return (linkQualitySource == LQ_SOURCE_NONE) ? scaleRange(linkQuality, 0, LINK_QUALITY_MAX_VALUE, 0, 100) : linkQuality;
-}
-#endif
-
-#ifdef USE_RX_LINK_UPLINK_POWER
-uint16_t rxGetUplinkTxPwrMw(void)
-{
-    return uplinkTxPwrMw;
+    return (linkQualitySource == LQ_SOURCE_RX_PROTOCOL_CRSF) ?  linkQuality : scaleRange(linkQuality, 0, LINK_QUALITY_MAX_VALUE, 0, 100);
 }
 #endif
 

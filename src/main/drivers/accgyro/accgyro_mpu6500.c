@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -72,7 +72,7 @@ void mpu6500GyroInit(gyroDev_t *gyro)
     delay(100);
     busWriteRegister(&gyro->bus, MPU_RA_PWR_MGMT_1, INV_CLK_PLL);
     delay(15);
-    busWriteRegister(&gyro->bus, MPU_RA_GYRO_CONFIG, gyro_range << 3 | mpuGyroFCHOICE(gyro));
+    busWriteRegister(&gyro->bus, MPU_RA_GYRO_CONFIG, gyro_range << 3);
     delay(15);
     busWriteRegister(&gyro->bus, MPU_RA_ACCEL_CONFIG, accel_range << 3);
     delay(15);
@@ -104,7 +104,8 @@ bool mpu6500GyroDetect(gyroDev_t *gyro)
     gyro->initFn = mpu6500GyroInit;
     gyro->readFn = mpuGyroRead;
 
-    gyro->scale = GYRO_SCALE_2000DPS;
+    // 16.4 dps/lsb scalefactor
+    gyro->scale = 1.0f / 16.4f;
 
     return true;
 }

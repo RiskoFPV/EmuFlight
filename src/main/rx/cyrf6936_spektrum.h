@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -23,13 +23,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define DSM_BIND_TIMEOUT_US 11000
+#define DSM_BIND_TIMEOUT_US 10000
 #define DSM_SYNC_TIMEOUT_US 20000
-#define DSM_RECV_LONG_TIMEOUT_US 18500
-#define DSM_RECV_MID_TIMEOUT_US 7500
-#define DSM_RECV_SHORT_TIMEOUT_US 4500
+#define DSM_RECV_LONG_TIMEOUT_US 18010
+#define DSM_RECV_MID_TIMEOUT_US 7000
+#define DSM_RECV_SHORT_TIMEOUT_US 4010
+#define DSM_RECV_TIMEOUT_OFFSET_US 1000
 
-#define DSM_MAX_BIND_PACKETS 500
 #define DSM_MAX_MISSED_PACKETS 31
 
 #define DSM_MAX_RF_CHANNEL 0x4F

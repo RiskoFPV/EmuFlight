@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -41,10 +41,7 @@
 
 #include "drivers/system.h"
 
-#include "fc/board_info.h"
 #include "fc/runtime_config.h"
-
-#include "pg/board.h"
 
 #include "sensors/acceleration.h"
 #include "sensors/barometer.h"
@@ -187,31 +184,29 @@ static CMS_Menu cmsx_menuCalibration = {
 
 // Info
 
-#if defined(USE_BOARD_INFO)
-static char manufacturerId[MAX_MANUFACTURER_ID_LENGTH + 1];
-static char boardName[MAX_BOARD_NAME_LENGTH + 1];
+static char infoGitRev[GIT_SHORT_REVISION_LENGTH + 1];
+static char infoTargetName[] = __TARGET__;
 
 static const void *cmsx_FirmwareInit(displayPort_t *pDisp)
 {
     UNUSED(pDisp);
 
-    strncpy(manufacturerId, getManufacturerId(), MAX_MANUFACTURER_ID_LENGTH + 1);
-    strncpy(boardName, getBoardName(), MAX_BOARD_NAME_LENGTH + 1);
+    unsigned i;
+    for (i = 0 ; i < GIT_SHORT_REVISION_LENGTH ; i++) {
+        infoGitRev[i] = toupper(shortGitRevision[i]);
+    }
+
+    infoGitRev[i] = 0x0; // Terminate string
 
     return NULL;
 }
-#endif
 
 static const OSD_Entry menuFirmwareEntries[] = {
     { "--- INFO ---", OME_Label, NULL, NULL, 0 },
     { "FWID", OME_String, NULL, FC_FIRMWARE_IDENTIFIER, 0 },
     { "FWVER", OME_String, NULL, FC_VERSION_STRING, 0 },
-    { "GITREV", OME_String, NULL, __REVISION__, 0 },
-    { "TARGET", OME_String, NULL, __TARGET__, 0 },
-#if defined(USE_BOARD_INFO)
-    { "MFR", OME_String, NULL, manufacturerId, 0 },
-    { "BOARD", OME_String, NULL, boardName, 0 },
-#endif
+    { "GITREV", OME_String, NULL, infoGitRev, 0 },
+    { "TARGET", OME_String, NULL, infoTargetName, 0 },
     { "--- SETUP ---", OME_Label, NULL, NULL, 0 },
     { "CALIBRATE",     OME_Submenu, cmsMenuChange, &cmsx_menuCalibration, 0},
     { "BACK", OME_Back, NULL, NULL, 0 },
@@ -223,11 +218,7 @@ CMS_Menu cmsx_menuFirmware = {
     .GUARD_text = "MENUFIRMWARE",
     .GUARD_type = OME_MENU,
 #endif
-#if defined(USE_BOARD_INFO)
     .onEnter = cmsx_FirmwareInit,
-#else
-    .onEnter = NULL,
-#endif
     .onExit = NULL,
     .onDisplayUpdate = NULL,
     .entries = menuFirmwareEntries

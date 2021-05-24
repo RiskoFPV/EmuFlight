@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -28,14 +28,14 @@
 
 typedef enum {
     PWM_TYPE_STANDARD = 0,
+    PWM_TYPE_ONESHOT125,
+    PWM_TYPE_ONESHOT42,
     PWM_TYPE_MULTISHOT,
     PWM_TYPE_BRUSHED,
     PWM_TYPE_DSHOT150,
     PWM_TYPE_DSHOT300,
     PWM_TYPE_DSHOT600,
-    PWM_TYPE_DSHOT1200,
-    PWM_TYPE_DSHOT2400,
-    PWM_TYPE_DSHOT4800,
+//    PWM_TYPE_DSHOT1200, removed
     PWM_TYPE_PROSHOT1000,
     PWM_TYPE_DISABLED,
     PWM_TYPE_MAX
@@ -101,5 +101,3 @@ struct motorDevConfig_s;
 typedef struct motorDevConfig_s motorDevConfig_t;
 bool isDshotBitbangActive(const motorDevConfig_t *motorConfig);
 #endif
-
-float getDigitalIdleOffset(const motorConfig_t *motorConfig);

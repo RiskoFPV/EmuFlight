@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -55,7 +55,7 @@ bool isButtonPressed = false;
 bool waitingDeviceResponse = false;
 
 
-static bool isFeatureSupported(uint16_t feature)
+static bool isFeatureSupported(uint8_t feature)
 {
     if (camDevice->info.features & feature || rcdeviceConfig()->feature & feature) {
         return true;
@@ -236,7 +236,7 @@ static void rcdevice5KeySimulationProcess(timeUs_t currentTimeUs)
     }
 #endif
 
-    if (ARMING_FLAG(ARMED) || IS_RC_MODE_ACTIVE(BOXSTICKCOMMANDDISABLE) || (getArmingDisableFlags() & (ARMING_DISABLED_RUNAWAY_TAKEOFF | ARMING_DISABLED_CRASH_DETECTED))) {
+    if (ARMING_FLAG(ARMED) || (getArmingDisableFlags() & (ARMING_DISABLED_RUNAWAY_TAKEOFF | ARMING_DISABLED_CRASH_DETECTED))) {
         return;
     }
 
@@ -284,15 +284,6 @@ static void rcdevice5KeySimulationProcess(timeUs_t currentTimeUs)
     }
 }
 
-static void rcdeviceProcessDeviceRequest(runcamDeviceRequest_t *request)
-{
-    switch (request->command) {
-        case RCDEVICE_PROTOCOL_COMMAND_REQUEST_FC_ATTITUDE:
-            runcamDeviceSendAttitude(camDevice);
-            break;
-    }
-}
-
 void rcdeviceUpdate(timeUs_t currentTimeUs)
 {
     rcdeviceReceive(currentTimeUs);
@@ -300,13 +291,6 @@ void rcdeviceUpdate(timeUs_t currentTimeUs)
     rcdeviceCameraControlProcess();
 
     rcdevice5KeySimulationProcess(currentTimeUs);
-
-    if (isFeatureSupported(RCDEVICE_PROTOCOL_FEATURE_FC_ATTITUDE)) {
-        runcamDeviceRequest_t *request = rcdeviceGetRequest();
-        if (request) {
-            rcdeviceProcessDeviceRequest(request);
-        }
-    }
 }
 
 void rcdeviceInit(void)

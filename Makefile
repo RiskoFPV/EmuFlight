@@ -5,7 +5,7 @@
 # this stuff is worth it, you can buy me a beer in return
 ###############################################################################
 #
-# Makefile for building the EmuFlight firmware.
+# Makefile for building the betaflight firmware.
 #
 # Invoke this with 'make help' to see the list of supported targets.
 #
@@ -54,7 +54,7 @@ FLASH_SIZE ?=
 # Things that need to be maintained as the source changes
 #
 
-FORKNAME      = EmuFlight
+FORKNAME      = betaflight
 
 # Working directories
 ROOT            := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))
@@ -83,7 +83,10 @@ include $(ROOT)/make/system-id.mk
 include $(ROOT)/make/checks.mk
 
 # configure some directories that are relative to wherever ROOT_DIR is located
-TOOLS_DIR ?= $(ROOT)/tools
+ifndef TOOLS_DIR
+TOOLS_DIR := $(ROOT)/tools
+endif
+BUILD_DIR := $(ROOT)/build
 DL_DIR    := $(ROOT)/downloads
 
 export RM := rm
@@ -105,7 +108,7 @@ FEATURE_CUT_LEVEL_SUPPLIED := $(FEATURE_CUT_LEVEL)
 FEATURE_CUT_LEVEL =
 
 # The list of targets to build for 'pre-push'
-PRE_PUSH_TARGET_LIST ?= $(UNIFIED_TARGETS) NUCLEOH743 SITL STM32F4DISCOVERY_DEBUG test-representative
+PRE_PUSH_TARGET_LIST ?= STM32F405 STM32F411 STM32F7X2 STM32F745 NUCLEOH743 SITL STM32F4DISCOVERY_DEBUG test-representative
 
 include $(ROOT)/make/targets.mk
 
@@ -113,12 +116,19 @@ REVISION := norevision
 ifeq ($(shell git diff --shortstat),)
 REVISION := $(shell git log -1 --format="%h")
 endif
+GIT_TAG =  $(shell git describe --tags)
+GIT_SHA1 = $(shell git rev-parse HEAD)
 
 FC_VER_MAJOR := $(shell grep " FC_VERSION_MAJOR" src/main/build/version.h | awk '{print $$3}' )
 FC_VER_MINOR := $(shell grep " FC_VERSION_MINOR" src/main/build/version.h | awk '{print $$3}' )
 FC_VER_PATCH := $(shell grep " FC_VERSION_PATCH" src/main/build/version.h | awk '{print $$3}' )
 
-FC_VER := $(FC_VER_MAJOR).$(FC_VER_MINOR).$(FC_VER_PATCH)
+GIT_TAG_EXACT := $(shell git describe --exact-match HEAD 2>&1)
+ifneq (,$(findstring fatal,$(GIT_TAG_EXACT)))
+    FC_VER := $(FC_VER_MAJOR).$(FC_VER_MINOR).$(FC_VER_PATCH)
+else
+    FC_VER := $(GIT_TAG_EXACT)
+endif
 
 # Search path for sources
 VPATH           := $(SRC_DIR):$(SRC_DIR)/startup
@@ -133,6 +143,7 @@ LD_FLAGS        :=
 EXTRA_LD_FLAGS  :=
 
 #
+
 # Default Tool options - can be overridden in {mcu}.mk files.
 #
 ifeq ($(DEBUG),GDB)
@@ -206,7 +217,6 @@ INCLUDE_DIRS    := $(INCLUDE_DIRS) \
 VPATH           := $(VPATH):$(TARGET_DIR)
 
 include $(ROOT)/make/source.mk
-
 ###############################################################################
 # Things that might need changing to use different tools
 #
@@ -234,7 +244,7 @@ CC_DEBUG_OPTIMISATION   := $(OPTIMISE_DEFAULT)
 CC_DEFAULT_OPTIMISATION := $(OPTIMISATION_BASE) $(OPTIMISE_DEFAULT)
 CC_SPEED_OPTIMISATION   := $(OPTIMISATION_BASE) $(OPTIMISE_SPEED)
 CC_SIZE_OPTIMISATION    := $(OPTIMISATION_BASE) $(OPTIMISE_SIZE)
-CC_NO_OPTIMISATION      :=
+CC_NO_OPTIMISATION      := 
 
 #
 # Added after GCC version update, remove once the warnings have been fixed
@@ -260,6 +270,7 @@ CFLAGS     += $(ARCH_FLAGS) \
               -D'__FORKNAME__="$(FORKNAME)"' \
               -D'__TARGET__="$(TARGET)"' \
               -D'__REVISION__="$(REVISION)"' \
+              -D'__GIT_TAG__="$(GIT_TAG)"' \
               -save-temps=obj \
               -MMD -MP \
               $(EXTRA_FLAGS)
@@ -268,6 +279,7 @@ ASFLAGS     = $(ARCH_FLAGS) \
               $(DEBUG_FLAGS) \
               -x assembler-with-cpp \
               $(addprefix -I,$(INCLUDE_DIRS)) \
+              $(DEVICE_FLAGS) \
               -MMD -MP
 
 ifeq ($(LD_FLAGS),)
@@ -304,11 +316,13 @@ TARGET_BASENAME = $(BIN_DIR)/$(FORKNAME)_$(FC_VER)_$(TARGET)_$(REVISION)
 #
 # Things we will build
 #
-TARGET_BIN      = $(TARGET_BASENAME).bin
-TARGET_HEX      = $(TARGET_BASENAME).hex
+TARGET_BRAIN_BIN = $(BIN_DIR)/$(FORKNAME)_$(FC_VER)_$(TARGET)_brainfpv.bin
+
+TARGET_BIN      = $(BIN_DIR)/$(FORKNAME)_$(FC_VER)_$(TARGET).bin
+TARGET_HEX      = $(BIN_DIR)/$(FORKNAME)_$(FC_VER)_$(TARGET).hex
+TARGET_ELF      = $(BIN_DIR)/$(FORKNAME)_$(FC_VER)_$(TARGET).elf
 TARGET_DFU      = $(TARGET_BASENAME).dfu
 TARGET_ZIP      = $(TARGET_BASENAME).zip
-TARGET_ELF      = $(OBJECT_DIR)/$(FORKNAME)_$(TARGET).elf
 TARGET_EXST_ELF = $(OBJECT_DIR)/$(FORKNAME)_$(TARGET)_EXST.elf
 TARGET_UNPATCHED_BIN = $(OBJECT_DIR)/$(FORKNAME)_$(TARGET)_UNPATCHED.bin
 TARGET_LST      = $(OBJECT_DIR)/$(FORKNAME)_$(TARGET).lst
@@ -330,6 +344,25 @@ $(OBJECT_DIR)/$(TARGET)/build/version.o : $(SRC)
 # List of buildable ELF files and their object dependencies.
 # It would be nice to compute these lists, but that seems to be just beyond make.
 
+## tlfw file for testing
+$(TARGET_TLFW): $(TARGET_BIN) $(OBJECT_DIR)/$(TARGET)_firmwareinfo.bin
+	cat $(TARGET_BIN) $(OBJECT_DIR)/$(TARGET)_firmwareinfo.bin > $(TARGET_TLFW)
+
+
+$(OBJECT_DIR)/$(TARGET)_firmwareinfo.bin: $(OBJECT_DIR)/$(TARGET)_firmwareinfo.o
+	$(OBJCOPY) -O binary $< $@
+
+$(OBJECT_DIR)/$(TARGET)_firmwareinfo.o: $(OBJECT_DIR)/$(TARGET)_firmwareinfo.c
+	@mkdir -p $(dir $@)
+	@echo %% $(notdir $<)
+	@$(CROSS_CC) -c -o  $@  $< $(addprefix -I,$(INCLUDE_DIRS))
+
+$(OBJECT_DIR)/$(TARGET)_firmwareinfo.c: $(TARGET_DIR)/firmwareinfotemplate.ct
+	python2 $(TARGET_DIR)/version-info.py \
+		--path=$(ROOT) \
+		--template=$^ \
+		--outfile=$@ 
+
 $(TARGET_LST): $(TARGET_ELF)
 	$(V0) $(OBJDUMP) -S --disassemble $< > $@
 
@@ -338,13 +371,17 @@ $(TARGET_BIN): $(TARGET_ELF)
 	@echo "Creating BIN $(TARGET_BIN)" "$(STDOUT)"
 	$(V1) $(OBJCOPY) -O binary $< $@
 
+ifeq ($(START_ADDRESS),)
+START_ADDRESS = 0x8000000
+endif
+
 $(TARGET_HEX): $(TARGET_ELF)
 	@echo "Creating HEX $(TARGET_HEX)" "$(STDOUT)"
-	$(V1) $(OBJCOPY) -O ihex --set-start 0x8000000 $< $@
+	$(V1) $(OBJCOPY) -O ihex --set-start $(START_ADDRESS) $< $@
 
 $(TARGET_DFU): $(TARGET_HEX)
 	@echo "Creating DFU $(TARGET_DFU)" "$(STDOUT)"
-	$(V1) $(PYTHON) $(DFUSE-PACK) -i $< $@
+	$(V1) $(DFUSE-PACK) -i $< $@
 
 else
 CLEAN_ARTIFACTS += $(TARGET_UNPATCHED_BIN) $(TARGET_EXST_HASH_SECTION_FILE) $(TARGET_EXST_ELF)
@@ -361,8 +398,8 @@ $(TARGET_BIN): $(TARGET_UNPATCHED_BIN)
 	$(V1) dd if=$(TARGET_UNPATCHED_BIN) of=$(TARGET_BIN) conv=notrunc
 
 	@echo "Generating MD5 hash of binary" "$(STDOUT)"
-	$(V1) openssl dgst -md5 $(TARGET_BIN) > $(TARGET_UNPATCHED_BIN).md5
-
+	$(V1) openssl dgst -md5 $(TARGET_BIN) > $(TARGET_UNPATCHED_BIN).md5 
+	
 	@echo "Patching MD5 hash into binary" "$(STDOUT)"
 	$(V1) cat $(TARGET_UNPATCHED_BIN).md5 | awk '{printf("%08x: %s",(1024*$(FIRMWARE_SIZE))-16,$$2);}' | xxd -r - $(TARGET_BIN)
 	$(V1) echo $(FIRMWARE_SIZE) | awk '{printf("-s 0x%08x -l 16 -c 16 %s",(1024*$$1)-16,"$(TARGET_BIN)");}' | xargs xxd
@@ -375,10 +412,10 @@ $(TARGET_BIN): $(TARGET_UNPATCHED_BIN)
 	@echo "Extracting HASH section from unpatched EXST elf $(TARGET_ELF)" "$(STDOUT)"
 	$(OBJCOPY) $(TARGET_ELF) $(TARGET_EXST_ELF).tmp --dump-section .exst_hash=$(TARGET_EXST_HASH_SECTION_FILE)
 	rm $(TARGET_EXST_ELF).tmp
-
+	
 	@echo "Patching MD5 hash into HASH section" "$(STDOUT)"
 	$(V1) cat $(TARGET_UNPATCHED_BIN).md5 | awk '{printf("%08x: %s",64-16,$$2);}' | xxd -r - $(TARGET_EXST_HASH_SECTION_FILE)
-
+	
 	@echo "Patching updated HASH section into $(TARGET_EXST_ELF)" "$(STDOUT)"
 	$(OBJCOPY) $(TARGET_ELF) $(TARGET_EXST_ELF) --update-section .exst_hash=$(TARGET_EXST_HASH_SECTION_FILE)
 
@@ -390,10 +427,23 @@ $(TARGET_HEX): $(TARGET_BIN)
 
 endif
 
+ifneq ($(filter BRAINFPV_BL,$(FEATURES)),)
+$(TARGET_BRAIN_BIN): $(TARGET_HEX) $(TARGET_ELF)
+	$(V1) $(eval BLHEADER_ADDR = 0x$(shell $(OBJDUMP) -x $(TARGET_ELF) | grep BRAINFPV_BL_HEADER | cut -d' ' -f1))
+	@echo "Packing for BrainFPV bootloader. Header address: $(BLHEADER_ADDR)" "$(STDOUT)"
+	$(V1) python3 brainfpv_fw_packer/brainfpv_fw_packer.py --in $(TARGET_HEX) --out $(TARGET_BRAIN_BIN) \
+	    --dev $(TARGET) -t 1 -b $(BLHEADER_ADDR) -z \
+	    --name $(FORKNAME) --version $(FC_VER)_$(REVISION) --sha1 $(GIT_SHA1)
+else
+$(TARGET_BRAIN_BIN): $(TARGET_HEX)
+	$(V1)
+endif
+
 $(TARGET_ELF): $(TARGET_OBJS) $(LD_SCRIPT)
 	@echo "Linking $(TARGET)" "$(STDOUT)"
 	$(V1) $(CROSS_CC) -o $@ $(filter-out %.ld,$^) $(LD_FLAGS)
 	$(V1) $(SIZE) $(TARGET_ELF)
+	$(V1) cp $(TARGET_ELF) $(BIN_DIR)/$(FORKNAME)_$(TARGET).elf
 
 # Compile
 
@@ -443,7 +493,6 @@ $(OBJECT_DIR)/$(TARGET)/%.o: %.S
 
 ## all               : Build all currently built targets
 all: $(CI_TARGETS)
-
 ## all_all : Build all targets (including legacy / unsupported)
 all_all: $(VALID_TARGETS)
 
@@ -474,7 +523,7 @@ targets-group-rest: $(GROUP_OTHER_TARGETS)
 
 $(VALID_TARGETS):
 	$(V0) @echo "Building $@" && \
-	$(MAKE) binary hex TARGET=$@ && \
+	$(MAKE) binary hex brainfpv_bin TARGET=$@ && \
 	echo "Building $@ succeeded."
 
 $(NOBUILD_TARGETS):
@@ -557,6 +606,12 @@ binary:
 hex:
 	$(V0) $(MAKE) -j $(TARGET_HEX)
 
+tlfw:
+	$(MAKE) -j $(TARGET_TLFW)
+
+brainfpv_bin:
+	$(MAKE) -j $(TARGET_BRAIN_BIN)
+
 unbrick_$(TARGET): $(TARGET_HEX)
 	$(V0) stty -F $(SERIAL_DEVICE) raw speed 115200 -crtscts cs8 -parenb -cstopb -ixon
 	$(V0) stm32flash -w $(TARGET_HEX) -v -g 0x0 -b 115200 $(SERIAL_DEVICE)
@@ -576,6 +631,9 @@ $(DL_DIR):
 	mkdir -p $@
 
 $(TOOLS_DIR):
+	mkdir -p $@
+
+$(BUILD_DIR):
 	mkdir -p $@
 
 ## version           : print firmware version
@@ -664,10 +722,10 @@ targets-f7-print:
 targets-ci-f7-print:
 	$(V1) $(MAKE) -s targets-by-mcu MCU_TYPE=STM32F7 TARGETS="$(CI_TARGETS)"
 
-## test              : run the EmuFlight test suite
-## junittest         : run the EmuFlight test suite, producing Junit XML result files.
-## test-representative: run a representative subset of the EmuFlight test suite (i.e. run all tests, but run each expanded test only for one target)
-## test-all: run the EmuFlight test suite including all per-target expanded tests
+## test              : run the Betaflight test suite
+## junittest         : run the Betaflight test suite, producing Junit XML result files.
+## test-representative: run a representative subset of the Betaflight test suite (i.e. run all tests, but run each expanded test only for one target)
+## test-all: run the Betaflight test suite including all per-target expanded tests
 test junittest test-all test-representative:
 	$(V0) cd src/test && $(MAKE) $@
 

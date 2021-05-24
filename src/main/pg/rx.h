@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -46,7 +46,6 @@ typedef struct rxConfig_s {
     uint8_t rcInterpolationChannels;
     uint8_t rcInterpolationInterval;
     uint8_t fpvCamAngleDegrees;             // Camera angle to be scaled into rc commands
-    uint8_t yawAroundGravity;               // Makes yaw act around the gravity vector, more similar to silverware
     uint8_t airModeActivateThreshold;       // Throttle setpoint percent where airmode gets activated
 
     uint16_t rx_min_usec;
@@ -67,14 +66,6 @@ typedef struct rxConfig_s {
     uint8_t srxl2_baud_fast; // Select Spektrum SRXL2 fast baud rate
     uint8_t sbus_baud_fast; // Select SBus fast baud rate
     uint8_t crsf_use_rx_snr; // Use RX SNR (in dB) instead of RSSI dBm for CRSF
-
-    uint32_t msp_override_channels_mask; // Channels to override when the MSP override mode is enabled
-
-    uint8_t showAlteredRc;               // allow you to see rate dynamics in the configurator
-
-    uint8_t predictive_rc_cutoff;
-    uint8_t predictive_rc_percent;
-    uint8_t predictive_rc_time;
 } rxConfig_t;
 
 PG_DECLARE(rxConfig_t, rxConfig);

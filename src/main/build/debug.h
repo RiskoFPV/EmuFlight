@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -87,6 +87,7 @@ typedef enum {
     DEBUG_SMARTAUDIO,
     DEBUG_RTH,
     DEBUG_ITERM_RELAX,
+    DEBUG_ACRO_TRAINER,
     DEBUG_RC_SMOOTHING,
     DEBUG_RX_SIGNAL_LOSS,
     DEBUG_RC_SMOOTHING_RATE,
@@ -95,6 +96,9 @@ typedef enum {
     DEBUG_RX_SPEKTRUM_SPI,
     DEBUG_DSHOT_RPM_TELEMETRY,
     DEBUG_RPM_FILTER,
+    DEBUG_D_MIN,
+    DEBUG_AC_CORRECTION,
+    DEBUG_AC_ERROR,
     DEBUG_DUAL_GYRO_SCALED,
     DEBUG_DSHOT_RPM_ERRORS,
     DEBUG_CRSF_LINK_STATISTICS_UPLINK,
@@ -106,19 +110,8 @@ typedef enum {
     DEBUG_FF_LIMIT,
     DEBUG_FF_INTERPOLATED,
     DEBUG_BLACKBOX_OUTPUT,
+    DEBUG_GYRO_SAMPLE,
     DEBUG_RX_TIMING,
-    DEBUG_MATRIX_FILTER,
-    DEBUG_D_LPF,
-    DEBUG_VTX_TRAMP,
-    DEBUG_KALMAN,
-    DEBUG_ABG,
-    DEBUG_D_ABG,
-    DEBUG_BOOST,
-    DEBUG_GHST,
-    DEBUG_ABG_STATE,
-    DEBUG_D_ABG_STATE,
-    DEBUG_RC_PREDICTOR,
-    DEBUG_SMITH_PREDICTOR,
     DEBUG_COUNT
 } debugType_e;
 

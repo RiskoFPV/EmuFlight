@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -20,31 +20,31 @@
  * BMP388 Driver author: Dominic Clifton
  */
 
-#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 
 #include "platform.h"
 
-#if defined(USE_BARO) && (defined(USE_BARO_BMP388) || defined(USE_BARO_SPI_BMP388))
-
 #include "build/build_config.h"
+
+#if defined(USE_BARO) && (defined(USE_BARO_BMP388) || defined(USE_BARO_SPI_BMP388))
 
 #include "build/debug.h"
 
-#include "drivers/barometer/barometer.h"
+#include "common/maths.h"
+
+#include "barometer.h"
+
 #include "drivers/bus.h"
 #include "drivers/bus_i2c.h"
 #include "drivers/bus_i2c_busdev.h"
 #include "drivers/bus_spi.h"
 #include "drivers/io.h"
-#include "drivers/nvic.h"
 #include "drivers/time.h"
+#include "drivers/nvic.h"
 
 #include "barometer_bmp388.h"
 
-// 10 MHz max SPI frequency
-#define BMP388_MAX_SPI_CLK_HZ 10000000
 
 #define BMP388_I2C_ADDR                                 (0x76) // same as BMP280/BMP180
 #define BMP388_DEFAULT_CHIP_ID                          (0x50) // from https://github.com/BoschSensortec/BMP3-Sensor-API/blob/master/bmp3_defs.h#L130
@@ -201,7 +201,7 @@ void bmp388BusInit(busDevice_t *busdev)
         IOHi(busdev->busdev_u.spi.csnPin); // Disable
         IOInit(busdev->busdev_u.spi.csnPin, OWNER_BARO_CS, 0);
         IOConfigGPIO(busdev->busdev_u.spi.csnPin, IOCFG_OUT_PP);
-        spiBusSetDivisor(busdev, spiCalculateDivider(BMP388_MAX_SPI_CLK_HZ));
+        spiBusSetDivisor(busdev, SPI_CLOCK_STANDARD);
     }
 #else
     UNUSED(busdev);
@@ -263,8 +263,6 @@ bool bmp388Detect(const bmp388Config_t *config, baroDev_t *baro)
         return false;
     }
 
-    busDeviceRegister(busdev);
-
 #ifdef USE_EXTI
     if (baroIntIO) {
         uint8_t intCtrlValue = 1 << BMP388_INT_DRDY_EN_BIT |
@@ -301,8 +299,8 @@ bool bmp388Detect(const bmp388Config_t *config, baroDev_t *baro)
 
     // See datasheet 3.9.2 "Measurement rate in forced mode and normal mode"
     baro->up_delay = 234 +
-        (392 + (powf(2, BMP388_PRESSURE_OSR + 1) * 2000)) +
-        (313 + (powf(2, BMP388_TEMPERATURE_OSR + 1) * 2000));
+        (392 + (powerf(2, BMP388_PRESSURE_OSR + 1) * 2000)) +
+        (313 + (powerf(2, BMP388_TEMPERATURE_OSR + 1) * 2000));
 
     baro->calculate = bmp388Calculate;
 

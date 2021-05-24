@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -51,11 +51,7 @@ void bbGpioSetup(bbMotor_t *bbMotor)
     bbPort_t *bbPort = bbMotor->bbPort;
     int pinIndex = bbMotor->pinIndex;
 
-#ifdef STM32H7
-    bbPort->gpioModeMask |= (GPIO_MODER_MODE0 << (pinIndex * 2)); // A minor name change in H7 CMSIS
-#else
     bbPort->gpioModeMask |= (GPIO_MODER_MODER0 << (pinIndex * 2));
-#endif
     bbPort->gpioModeInput |= (LL_GPIO_MODE_INPUT << (pinIndex * 2));
     bbPort->gpioModeOutput |= (LL_GPIO_MODE_OUTPUT << (pinIndex * 2));
 
@@ -77,7 +73,7 @@ void bbGpioSetup(bbMotor_t *bbMotor)
         IOWrite(bbMotor->io, 0);
     }
 
-#if defined(STM32F7) || defined(STM32G4) || defined(STM32H7)
+#if defined(STM32F7)
     IOConfigGPIO(bbMotor->io, IO_CONFIG(GPIO_MODE_OUTPUT_PP, GPIO_SPEED_FREQ_HIGH, bbPuPdMode));
 #else
 #error MCU dependent code required
@@ -131,38 +127,20 @@ void bbTimerChannelInit(bbPort_t *bbPort)
 #ifdef USE_DMA_REGISTER_CACHE
 void bbLoadDMARegs(dmaResource_t *dmaResource, dmaRegCache_t *dmaRegCache)
 {
-#if defined(STM32F7) || defined(STM32H7)
     ((DMA_ARCH_TYPE *)dmaResource)->CR = dmaRegCache->CR;
     ((DMA_ARCH_TYPE *)dmaResource)->FCR = dmaRegCache->FCR;
     ((DMA_ARCH_TYPE *)dmaResource)->NDTR = dmaRegCache->NDTR;
     ((DMA_ARCH_TYPE *)dmaResource)->PAR = dmaRegCache->PAR;
     ((DMA_ARCH_TYPE *)dmaResource)->M0AR = dmaRegCache->M0AR;
-#elif defined(STM32G4)
-    ((DMA_ARCH_TYPE *)dmaResource)->CCR = dmaRegCache->CCR;
-    ((DMA_ARCH_TYPE *)dmaResource)->CNDTR = dmaRegCache->CNDTR;
-    ((DMA_ARCH_TYPE *)dmaResource)->CPAR = dmaRegCache->CPAR;
-    ((DMA_ARCH_TYPE *)dmaResource)->CMAR = dmaRegCache->CMAR;
-#else
-#error MCU dependent code required
-#endif
 }
 
 static void bbSaveDMARegs(dmaResource_t *dmaResource, dmaRegCache_t *dmaRegCache)
 {
-#if defined(STM32F7) || defined(STM32H7)
     dmaRegCache->CR = ((DMA_ARCH_TYPE *)dmaResource)->CR;
     dmaRegCache->FCR = ((DMA_ARCH_TYPE *)dmaResource)->FCR;
     dmaRegCache->NDTR = ((DMA_ARCH_TYPE *)dmaResource)->NDTR;
     dmaRegCache->PAR = ((DMA_ARCH_TYPE *)dmaResource)->PAR;
     dmaRegCache->M0AR = ((DMA_ARCH_TYPE *)dmaResource)->M0AR;
-#elif defined(STM32G4)
-    ((DMA_ARCH_TYPE *)dmaResource)->CCR = dmaRegCache->CCR;
-    ((DMA_ARCH_TYPE *)dmaResource)->CNDTR = dmaRegCache->CNDTR;
-    ((DMA_ARCH_TYPE *)dmaResource)->CPAR = dmaRegCache->CPAR;
-    ((DMA_ARCH_TYPE *)dmaResource)->CMAR = dmaRegCache->CMAR;
-#else
-#error MCU dependent code required
-#endif
 }
 #endif
 
@@ -246,15 +224,15 @@ void bbDMAPreconfigure(bbPort_t *bbPort, uint8_t direction)
     LL_DMA_StructInit(dmainit);
 
     dmainit->Mode = LL_DMA_MODE_NORMAL;
-#if defined(STM32G4) || defined(STM32H7)
-    dmainit->PeriphRequest = bbPort->dmaChannel;
-#else
     dmainit->Channel = bbPort->dmaChannel;
-    dmainit->FIFOMode = LL_DMA_FIFOMODE_ENABLE ;
-#endif
-
     dmainit->PeriphOrM2MSrcIncMode = LL_DMA_PERIPH_NOINCREMENT;
     dmainit->MemoryOrM2MDstIncMode = LL_DMA_MEMORY_INCREMENT;
+    dmainit->FIFOMode = LL_DMA_FIFOMODE_ENABLE ;
+#if 0
+    dmainit->DMA_FIFOThreshold = DMA_FIFOThreshold_1QuarterFull ;
+    dmainit->DMA_MemoryBurst = DMA_MemoryBurst_Single ;
+    dmainit->DMA_PeripheralBurst = DMA_PeripheralBurst_Single;
+#endif
 
     if (direction == DSHOT_BITBANG_DIRECTION_OUTPUT) {
         dmainit->Priority = LL_DMA_PRIORITY_VERYHIGH;
@@ -277,13 +255,7 @@ void bbDMAPreconfigure(bbPort_t *bbPort, uint8_t direction)
         dmainit->PeriphOrM2MSrcAddress = (uint32_t)&bbPort->gpio->IDR;
         dmainit->PeriphOrM2MSrcDataSize = LL_DMA_PDATAALIGN_HALFWORD;
         dmainit->MemoryOrM2MDstAddress = (uint32_t)bbPort->portInputBuffer;
-
-#ifdef STM32G4
-        // XXX G4 seems to require 16-bit transfer
-        dmainit->MemoryOrM2MDstDataSize = LL_DMA_MDATAALIGN_HALFWORD;
-#else
         dmainit->MemoryOrM2MDstDataSize = LL_DMA_MDATAALIGN_WORD;
-#endif
 
 #ifdef USE_DMA_REGISTER_CACHE
         xLL_EX_DMA_Init(bbPort->dmaResource, dmainit);
@@ -321,11 +293,7 @@ void bbDMA_ITConfig(bbPort_t *bbPort)
 
     xLL_EX_DMA_EnableIT_TC(bbPort->dmaResource);
 
-#if defined(STM32G4)
-    SET_BIT(((DMA_Channel_TypeDef *)(bbPort->dmaResource))->CCR, DMA_CCR_TCIE|DMA_CCR_TEIE);
-#else
     SET_BIT(((DMA_Stream_TypeDef *)(bbPort->dmaResource))->CR, DMA_SxCR_TCIE|DMA_SxCR_TEIE);
-#endif
 }
 
 void bbDMA_Cmd(bbPort_t *bbPort, FunctionalState NewState)

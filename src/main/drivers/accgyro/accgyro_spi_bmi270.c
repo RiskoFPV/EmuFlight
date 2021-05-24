@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -25,6 +25,16 @@
 
 #ifdef USE_ACCGYRO_BMI270
 
+#if defined(USE_CHIBIOS)
+#include "ch.h"
+extern binary_semaphore_t gyroSem;
+bool gyro_sample_processed = false;
+#endif
+
+#if defined(BRAINFPV)
+#include "brainfpv/brainfpv_osd.h"
+#endif
+
 #include "drivers/accgyro/accgyro.h"
 #include "drivers/accgyro/accgyro_spi_bmi270.h"
 #include "drivers/bus_spi.h"
@@ -35,8 +45,9 @@
 #include "drivers/sensor.h"
 #include "drivers/time.h"
 
-// 10 MHz max SPI frequency
-#define BMI270_MAX_SPI_CLK_HZ 10000000
+#if !defined(BMI270_SPI_DIVISOR)
+#define BMI270_SPI_DIVISOR 16
+#endif
 
 #define BMI270_FIFO_FRAME_SIZE 6
 
@@ -156,7 +167,7 @@ static void bmi270EnableSPI(const busDevice_t *bus)
 
 uint8_t bmi270Detect(const busDevice_t *bus)
 {
-    spiSetDivisor(bus->busdev_u.spi.instance, spiCalculateDivider(BMI270_MAX_SPI_CLK_HZ));
+    spiSetDivisor(bus->busdev_u.spi.instance, BMI270_SPI_DIVISOR);
     bmi270EnableSPI(bus);
 
     if (bmi270RegisterRead(bus, BMI270_REG_CHIP_ID) == BMI270_CHIP_ID) {
@@ -252,8 +263,20 @@ extiCallbackRec_t bmi270IntCallbackRec;
 #if defined(USE_GYRO_EXTI) && defined(USE_MPU_DATA_READY_SIGNAL)
 void bmi270ExtiHandler(extiCallbackRec_t *cb)
 {
+#if defined(USE_CHIBIOS)
+    CH_IRQ_PROLOGUE();
+#endif /* defined(USE_CHIBIOS) */
+
     gyroDev_t *gyro = container_of(cb, gyroDev_t, exti);
     gyro->dataReady = true;
+
+#if defined(USE_CHIBIOS)
+    chSysLockFromISR();
+    gyro_sample_processed = false;
+    chBSemSignalI(&gyroSem);
+    chSysUnlockFromISR();
+    CH_IRQ_EPILOGUE();
+#endif /* defined(USE_CHIBIOS) */
 }
 
 static void bmi270IntExtiInit(gyroDev_t *gyro)
@@ -394,6 +417,9 @@ static bool bmi270GyroReadFifo(gyroDev_t *gyro)
 
 static bool bmi270GyroRead(gyroDev_t *gyro)
 {
+#if defined(USE_CHIBIOS)
+    gyro_sample_processed = true;
+#endif
 #ifdef USE_GYRO_DLPF_EXPERIMENTAL
     if (gyro->hardware_lpf == GYRO_HARDWARE_LPF_EXPERIMENTAL) {
         // running in 6.4KHz FIFO mode
@@ -442,7 +468,7 @@ bool bmi270SpiGyroDetect(gyroDev_t *gyro)
 
     gyro->initFn = bmi270SpiGyroInit;
     gyro->readFn = bmi270GyroRead;
-    gyro->scale = GYRO_SCALE_2000DPS;
+    gyro->scale = 1.0f / 16.4f;
 
     return true;
 }

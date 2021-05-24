@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -257,15 +257,15 @@ static void GPStoDDDMM_MMMM(int32_t mwiigps, gpsCoordinateDDDMMmmmm_t *result)
 static void sendLatLong(int32_t coord[2])
 {
     gpsCoordinateDDDMMmmmm_t coordinate;
-    GPStoDDDMM_MMMM(coord[GPS_LATITUDE], &coordinate);
+    GPStoDDDMM_MMMM(coord[LAT], &coordinate);
     frSkyHubWriteFrame(ID_LATITUDE_BP, coordinate.dddmm);
     frSkyHubWriteFrame(ID_LATITUDE_AP, coordinate.mmmm);
-    frSkyHubWriteFrame(ID_N_S, coord[GPS_LATITUDE] < 0 ? 'S' : 'N');
+    frSkyHubWriteFrame(ID_N_S, coord[LAT] < 0 ? 'S' : 'N');
 
-    GPStoDDDMM_MMMM(coord[GPS_LONGITUDE], &coordinate);
+    GPStoDDDMM_MMMM(coord[LON], &coordinate);
     frSkyHubWriteFrame(ID_LONGITUDE_BP, coordinate.dddmm);
     frSkyHubWriteFrame(ID_LONGITUDE_AP, coordinate.mmmm);
-    frSkyHubWriteFrame(ID_E_W, coord[GPS_LONGITUDE] < 0 ? 'W' : 'E');
+    frSkyHubWriteFrame(ID_E_W, coord[LON] < 0 ? 'W' : 'E');
 }
 
 #if defined(USE_GPS)
@@ -289,13 +289,13 @@ static void sendSatalliteSignalQualityAsTemperature2(uint8_t cycleNum)
         satellite = constrain(gpsSol.hdop, 0, GPS_MAX_HDOP_VAL);
     }
     int16_t data;
-    if (telemetryConfig()->frsky_unit == UNIT_IMPERIAL) {
+    if (telemetryConfig()->frsky_unit == FRSKY_UNIT_METRICS) {
+        data = satellite;
+    } else {
         float tmp = (satellite - 32) / 1.8f;
         // Round the value
         tmp += (tmp < 0) ? -0.5f : 0.5f;
         data = tmp;
-    } else {
-        data = satellite;
     }
     frSkyHubWriteFrame(ID_TEMPRATURE2, data);
 }
@@ -316,8 +316,8 @@ static void sendFakeLatLong(void)
     // Heading is only displayed on OpenTX if non-zero lat/long is also sent
     int32_t coord[2] = {0,0};
 
-    coord[GPS_LATITUDE] = ((0.01f * telemetryConfig()->gpsNoFixLatitude) * GPS_DEGREES_DIVIDER);
-    coord[GPS_LONGITUDE] = ((0.01f * telemetryConfig()->gpsNoFixLongitude) * GPS_DEGREES_DIVIDER);
+    coord[LAT] = ((0.01f * telemetryConfig()->gpsNoFixLatitude) * GPS_DEGREES_DIVIDER);
+    coord[LON] = ((0.01f * telemetryConfig()->gpsNoFixLongitude) * GPS_DEGREES_DIVIDER);
 
     sendLatLong(coord);
 }
@@ -330,8 +330,8 @@ static void sendGPSLatLong(void)
     if (STATE(GPS_FIX) || gpsFixOccured == 1) {
         // If we have ever had a fix, send the last known lat/long
         gpsFixOccured = 1;
-        coord[GPS_LATITUDE] = gpsSol.llh.lat;
-        coord[GPS_LONGITUDE] = gpsSol.llh.lon;
+        coord[LAT] = gpsSol.llh.lat;
+        coord[LON] = gpsSol.llh.lon;
         sendLatLong(coord);
     } else {
         // otherwise send fake lat/long in order to display compass value

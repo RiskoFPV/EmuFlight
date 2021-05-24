@@ -27,7 +27,7 @@
 bool simulatedAirmodeEnabled = true;
 float simulatedSetpointRate[3] = { 0,0,0 };
 float simulatedRcDeflection[3] = { 0,0,0 };
-float simulatedThrottlePAttenuation = 1.0f;
+float simulatedThrottlePIDAttenuation = 1.0f;
 float simulatedMotorMixRange = 0.0f;
 
 int16_t debug[DEBUG16_VALUE_COUNT];
@@ -52,10 +52,9 @@ extern "C" {
     #include "fc/rc_controls.h"
     #include "fc/runtime_config.h"
 
+    #include "flight/pid.h"
     #include "flight/imu.h"
     #include "flight/mixer.h"
-    #include "flight/pid.h"
-    #include "flight/pid_init.h"
 
     #include "io/gps.h"
 
@@ -70,7 +69,7 @@ extern "C" {
     bool unitLaunchControlActive = false;
     launchControlMode_e unitLaunchControlMode = LAUNCH_CONTROL_MODE_NORMAL;
 
-    float getThrottlePAttenuation(void) { return simulatedThrottlePAttenuation; }
+    float getThrottlePIDAttenuation(void) { return simulatedThrottlePIDAttenuation; }
     float getMotorMixRange(void) { return simulatedMotorMixRange; }
     float getSetpointRate(int axis) { return simulatedSetpointRate[axis]; }
     bool isAirmodeActivated() { return simulatedAirmodeEnabled; }
@@ -114,9 +113,12 @@ void setDefaultTestSettings(void) {
     pidProfile->dterm_notch_cutoff = 160;
     pidProfile->dterm_filter_type = FILTER_BIQUAD;
     pidProfile->itermWindupPointPercent = 50;
+    pidProfile->vbatPidCompensation = 0;
     pidProfile->pidAtMinThrottle = PID_STABILISATION_ON;
     pidProfile->levelAngleLimit = 55;
     pidProfile->feedForwardTransition = 100;
+    pidProfile->yawRateAccelLimit = 100;
+    pidProfile->rateAccelLimit = 0;
     pidProfile->antiGravityMode = ANTI_GRAVITY_SMOOTH;
     pidProfile->itermThrottleThreshold = 250;
     pidProfile->itermAcceleratorGain = 1000;
@@ -141,6 +143,7 @@ void setDefaultTestSettings(void) {
     pidProfile->abs_control_gain = 0,
     pidProfile->launchControlMode = LAUNCH_CONTROL_MODE_NORMAL,
     pidProfile->launchControlGain = 40,
+    pidProfile->level_race_mode = false,
 
     gyro.targetLooptime = 8000;
 }
@@ -151,7 +154,7 @@ timeUs_t currentTestTime(void) {
 
 void resetTest(void) {
     loopIter = 0;
-    simulatedThrottlePAttenuation = 1.0f;
+    simulatedThrottlePIDAttenuation = 1.0f;
     simulatedMotorMixRange = 0.0f;
 
     pidStabilisationState(PID_STABILISATION_OFF);
@@ -297,6 +300,14 @@ TEST(pidControllerTest, testPidLoop) {
     EXPECT_NEAR(-8.8, pidData[FD_YAW].I, calculateTolerance(-8.8));
     simulatedMotorMixRange = 0;
 
+    // Simulate Iterm behaviour during mixer saturation
+    simulatedMotorMixRange = 1.2f;
+    pidController(pidProfile, &rollAndPitchTrims, currentTestTime());
+    ASSERT_NEAR(-23.5, pidData[FD_ROLL].I, calculateTolerance(-23.5));
+    ASSERT_NEAR(19.6, pidData[FD_PITCH].I, calculateTolerance(19.6));
+    ASSERT_NEAR(-8.8, pidData[FD_YAW].I, calculateTolerance(-8.8));
+    simulatedMotorMixRange = 0;
+
     // Match the stick to gyro to stop error
     simulatedSetpointRate[FD_ROLL] = 100;
     simulatedSetpointRate[FD_PITCH] = -100;
@@ -388,18 +399,18 @@ TEST(pidControllerTest, testPidHorizon) {
     // Test full stick response
     setStickPosition(FD_ROLL, 1.0f);
     setStickPosition(FD_PITCH, -1.0f);
-    EXPECT_FLOAT_EQ(0, calcHorizonLevelStrength(pidProfile));
+    EXPECT_FLOAT_EQ(0, calcHorizonLevelStrength());
 
     // Expect full rate output on full stick
     // Test zero stick response
     setStickPosition(FD_ROLL, 0);
     setStickPosition(FD_PITCH, 0);
-    EXPECT_FLOAT_EQ(1, calcHorizonLevelStrength(pidProfile));
+    EXPECT_FLOAT_EQ(1, calcHorizonLevelStrength());
 
     // Test small stick response
     setStickPosition(FD_ROLL, 0.1f);
     setStickPosition(FD_PITCH, -0.1f);
-    EXPECT_NEAR(0.82, calcHorizonLevelStrength(pidProfile), calculateTolerance(0.82));
+    EXPECT_NEAR(0.82, calcHorizonLevelStrength(), calculateTolerance(0.82));
 }
 
 TEST(pidControllerTest, testMixerSaturation) {
@@ -456,6 +467,8 @@ TEST(pidControllerTest, testCrashRecoveryMode) {
     pidStabilisationState(PID_STABILISATION_ON);
     sensorsSet(SENSOR_ACC);
 
+    EXPECT_FALSE(crashRecoveryModeActive());
+
     int loopsToCrashTime = (int)((pidProfile->crash_time * 1000) / targetPidLooptime) + 1;
 
     // generate crash detection for roll axis
@@ -466,6 +479,8 @@ TEST(pidControllerTest, testCrashRecoveryMode) {
         // advance the time to avoid initialized state prevention of crash recovery
         pidController(pidProfile, currentTestTime() + 2000000);
     }
+
+    EXPECT_TRUE(crashRecoveryModeActive());
     // Add additional verifications
 }
 

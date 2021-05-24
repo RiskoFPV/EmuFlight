@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -210,7 +210,11 @@ void uartDmaIrqHandler(dmaChannelDescriptor_t* descriptor)
 
 void serialUARTInitIO(IO_t txIO, IO_t rxIO, portMode_e mode, portOptions_e options, uint8_t af, uint8_t index)
 {
+<<<<<<< HEAD
+    if ((options & SERIAL_BIDIR) && tx) {
+=======
     if ((options & SERIAL_BIDIR) && txIO) {
+>>>>>>> v3.2.0-RC3
         ioConfig_t ioCfg = IO_CONFIG(GPIO_Mode_AF, GPIO_Speed_50MHz,
             ((options & SERIAL_INVERTED) || (options & SERIAL_BIDIR_PP) || (options & SERIAL_BIDIR_PP_PD)) ? GPIO_OType_PP : GPIO_OType_OD,
             ((options & SERIAL_INVERTED) || (options & SERIAL_BIDIR_PP_PD)) ? GPIO_PuPd_DOWN : GPIO_PuPd_UP
@@ -223,6 +227,16 @@ void serialUARTInitIO(IO_t txIO, IO_t rxIO, portMode_e mode, portOptions_e optio
             IOLo(txIO);   // OpenDrain output should be inactive
     } else {
         ioConfig_t ioCfg = IO_CONFIG(GPIO_Mode_AF, GPIO_Speed_50MHz, GPIO_OType_PP, (options & SERIAL_INVERTED) ? GPIO_PuPd_DOWN : GPIO_PuPd_UP);
+<<<<<<< HEAD
+        if ((mode & MODE_TX) && tx) {
+            IOInit(tx, OWNER_SERIAL_TX, index);
+            IOConfigGPIOAF(tx, ioCfg, af);
+        }
+
+        if ((mode & MODE_RX) && rx) {
+            IOInit(rx, OWNER_SERIAL_RX, index);
+            IOConfigGPIOAF(rx, ioCfg, af);
+=======
         if ((mode & MODE_TX) && txIO) {
             IOInit(txIO, OWNER_SERIAL_TX, RESOURCE_INDEX(index));
             IOConfigGPIOAF(txIO, ioCfg, af);
@@ -231,6 +245,7 @@ void serialUARTInitIO(IO_t txIO, IO_t rxIO, portMode_e mode, portOptions_e optio
         if ((mode & MODE_RX) && rxIO) {
             IOInit(rxIO, OWNER_SERIAL_RX, RESOURCE_INDEX(index));
             IOConfigGPIOAF(rxIO, ioCfg, af);
+>>>>>>> v3.2.0-RC3
         }
     }
 }

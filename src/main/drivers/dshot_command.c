@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -152,29 +152,17 @@ static bool allMotorsAreIdle(void)
     return true;
 }
 
-bool dshotStreamingCommandsAreEnabled(void)
-{
-    return motorIsEnabled() && motorGetMotorEnableTimeMs() && millis() > motorGetMotorEnableTimeMs() + DSHOT_PROTOCOL_DETECTION_DELAY_MS;
-}
-
-static bool dshotCommandsAreEnabled(dshotCommandType_e commandType)
+bool dshotCommandsAreEnabled(dshotCommandType_e commandType)
 {
     bool ret = false;
 
-    switch (commandType) {
-    case DSHOT_CMD_TYPE_BLOCKING:
+    if (commandType == DSHOT_CMD_TYPE_BLOCKING) {
         ret = !motorIsEnabled();
-
-        break;
-    case DSHOT_CMD_TYPE_INLINE:
-        ret = dshotStreamingCommandsAreEnabled();
-
-        break;
-    default:
-
-        break;
+    } else if (commandType == DSHOT_CMD_TYPE_INLINE) {
+        if (motorIsEnabled() && motorGetMotorEnableTimeMs() && millis() > motorGetMotorEnableTimeMs() + DSHOT_PROTOCOL_DETECTION_DELAY_MS) {
+            ret = true;
+        }
     }
-
     return ret;
 }
 
@@ -195,6 +183,8 @@ void dshotCommandWrite(uint8_t index, uint8_t motorCount, uint8_t command, dshot
     case DSHOT_CMD_SAVE_SETTINGS:
     case DSHOT_CMD_SPIN_DIRECTION_NORMAL:
     case DSHOT_CMD_SPIN_DIRECTION_REVERSED:
+    case DSHOT_CMD_SIGNAL_LINE_TELEMETRY_DISABLE:
+    case DSHOT_CMD_SIGNAL_LINE_CONTINUOUS_ERPM_TELEMETRY:
         repeats = 10;
         break;
     case DSHOT_CMD_BEACON1:

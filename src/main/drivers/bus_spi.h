@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -45,6 +45,41 @@
 #define SPI_IO_AF_MISO_CFG      IO_CONFIG(GPIO_Mode_IN_FLOATING, GPIO_Speed_50MHz)
 #define SPI_IO_CS_CFG           IO_CONFIG(GPIO_Mode_Out_PP,      GPIO_Speed_50MHz)
 #endif
+
+/*
+  Flash M25p16 tolerates 20mhz, SPI_CLOCK_FAST should sit around 20 or less.
+*/
+typedef enum {
+    SPI_CLOCK_INITIALIZATION = 256,
+#if defined(STM32F4)
+    SPI_CLOCK_SLOW          = 128, //00.65625 MHz
+    SPI_CLOCK_STANDARD      = 8,   //10.50000 MHz
+    SPI_CLOCK_FAST          = 4,   //21.00000 MHz
+    SPI_CLOCK_ULTRAFAST     = 2    //42.00000 MHz
+#elif defined(STM32F7)
+    SPI_CLOCK_SLOW          = 256, //00.42188 MHz
+    SPI_CLOCK_STANDARD      = 16,  //06.57500 MHz
+    SPI_CLOCK_FAST          = 8,   //13.50000 MHz
+    SPI_CLOCK_ULTRAFAST     = 2    //54.00000 MHz
+#elif defined(STM32H7)
+    // spi_ker_ck = 100MHz
+    SPI_CLOCK_SLOW          = 128, //00.78125 MHz
+    SPI_CLOCK_STANDARD      = 8,  //12.00000 MHz
+    SPI_CLOCK_FAST          = 4,   //25.00000 MHz
+    SPI_CLOCK_ULTRAFAST     = 2    //50.00000 MHz
+#elif defined(STM32G4)
+    // @170MHz
+    SPI_CLOCK_SLOW          = 128, //00.78125 MHz
+    SPI_CLOCK_STANDARD      = 16,  //10.62500 MHz
+    SPI_CLOCK_FAST          = 8,   //21.25000 MHz
+    SPI_CLOCK_ULTRAFAST     = 4    //42.50000 MHz
+#else
+    SPI_CLOCK_SLOW          = 128, //00.56250 MHz
+    SPI_CLOCK_STANDARD      = 4,   //09.00000 MHz
+    SPI_CLOCK_FAST          = 2,   //18.00000 MHz
+    SPI_CLOCK_ULTRAFAST     = 2    //18.00000 MHz
+#endif
+} SPIClockDivider_e;
 
 // De facto standard mode
 // See https://en.wikipedia.org/wiki/Serial_Peripheral_Interface
@@ -125,10 +160,9 @@ void spiBusWriteRegisterBuffer(const busDevice_t *bus, uint8_t reg, const uint8_
 uint8_t spiBusRawReadRegister(const busDevice_t *bus, uint8_t reg);
 uint8_t spiBusReadRegister(const busDevice_t *bus, uint8_t reg);
 void spiBusSetInstance(busDevice_t *bus, SPI_TypeDef *instance);
-uint16_t spiCalculateDivider(uint32_t freq);
-void spiBusSetDivisor(busDevice_t *bus, uint16_t divider);
+void spiBusSetDivisor(busDevice_t *bus, SPIClockDivider_e divider);
 
-void spiBusTransactionInit(busDevice_t *bus, SPIMode_e mode, uint16_t divider);
+void spiBusTransactionInit(busDevice_t *bus, SPIMode_e mode, SPIClockDivider_e divider);
 void spiBusTransactionSetup(const busDevice_t *bus);
 void spiBusTransactionBegin(const busDevice_t *bus);
 void spiBusTransactionEnd(const busDevice_t *bus);
@@ -143,5 +177,3 @@ bool spiBusTransactionTransfer(const busDevice_t *bus, const uint8_t *txData, ui
 
 struct spiPinConfig_s;
 void spiPinConfigure(const struct spiPinConfig_s *pConfig);
-void spiBusDeviceRegister(const busDevice_t *bus);
-uint8_t spiGetRegisteredDeviceCount(void);

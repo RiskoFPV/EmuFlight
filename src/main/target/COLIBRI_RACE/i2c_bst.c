@@ -16,10 +16,6 @@
 #include "common/color.h"
 #include "common/maths.h"
 
-#include "config/config.h"
-#include "config/config_eeprom.h"
-#include "config/feature.h"
-
 #include "drivers/accgyro/accgyro.h"
 #include "drivers/compass/compass.h"
 #include "drivers/bus_i2c.h"
@@ -29,20 +25,14 @@
 #include "drivers/time.h"
 #include "drivers/timer.h"
 
+#include "config/config.h"
 #include "fc/controlrate_profile.h"
 #include "fc/core.h"
 #include "fc/rc_adjustments.h"
 #include "fc/rc_controls.h"
 #include "fc/runtime_config.h"
 
-#include "flight/position.h"
-#include "flight/failsafe.h"
-#include "flight/imu.h"
-#include "flight/mixer.h"
-#include "flight/pid.h"
-#include "flight/pid_init.h"
-#include "flight/servos.h"
-
+#include "io/motors.h"
 #include "io/servos.h"
 #include "io/gps.h"
 #include "io/gimbal.h"
@@ -69,6 +59,16 @@
 #include "sensors/rangefinder.h"
 
 #include "telemetry/telemetry.h"
+
+#include "flight/position.h"
+#include "flight/failsafe.h"
+#include "flight/imu.h"
+#include "flight/mixer.h"
+#include "flight/pid.h"
+#include "flight/servos.h"
+
+#include "config/config_eeprom.h"
+#include "config/feature.h"
 
 #include "bus_bst.h"
 #include "i2c_bst.h"
@@ -322,7 +322,7 @@ static bool bstSlaveProcessFeedbackCommand(uint8_t bstRequest)
             for (i = 0 ; i < 3; i++) {
                 bstWrite8(currentControlRateProfile->rates[i]); // R,P,Y see flight_dynamics_index_t
             }
-            bstWrite8(currentControlRateProfile->dynThrD);
+            bstWrite8(currentControlRateProfile->dynThrPID);
             bstWrite8(currentControlRateProfile->thrMid8);
             bstWrite8(currentControlRateProfile->thrExpo8);
             bstWrite16(currentControlRateProfile->tpa_breakpoint);
@@ -370,7 +370,7 @@ static bool bstSlaveProcessFeedbackCommand(uint8_t bstRequest)
             bstWrite8(rxConfig()->rssi_channel);
             bstWrite8(0);
 
-            bstWrite16(0); // was mag_declination / 10
+            bstWrite16(compassConfig()->mag_declination / 10);
 
             bstWrite8(voltageSensorADCConfig(VOLTAGE_SENSOR_ADC_VBAT)->vbatscale);
             bstWrite8((batteryConfig()->vbatmincellvoltage + 5) / 10);
@@ -460,7 +460,7 @@ static bool bstSlaveProcessWriteCommand(uint8_t bstWriteCommand)
                     currentControlRateProfile->rates[i] = bstRead8();
                 }
                 rate = bstRead8();
-                currentControlRateProfile->dynThrD = MIN(rate, CONTROL_RATE_CONFIG_TPA_MAX);
+                currentControlRateProfile->dynThrPID = MIN(rate, CONTROL_RATE_CONFIG_TPA_MAX);
                 currentControlRateProfile->thrMid8 = bstRead8();
                 currentControlRateProfile->thrExpo8 = bstRead8();
                 currentControlRateProfile->tpa_breakpoint = bstRead16();
@@ -518,7 +518,7 @@ static bool bstSlaveProcessWriteCommand(uint8_t bstWriteCommand)
             rxConfigMutable()->rssi_channel = bstRead8();
             bstRead8();
 
-            bstRead16(); // was mag_declination / 10
+            compassConfigMutable()->mag_declination = bstRead16() * 10;
 
             voltageSensorADCConfigMutable(VOLTAGE_SENSOR_ADC_VBAT)->vbatscale = bstRead8();  // actual vbatscale as intended
             batteryConfigMutable()->vbatmincellvoltage = bstRead8() * 10;  // vbatlevel_warn1 in MWC2.3 GUI

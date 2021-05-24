@@ -1,13 +1,13 @@
 /*
- * This file is part of Cleanflight and Betaflight and EmuFlight.
+ * This file is part of Cleanflight and Betaflight.
  *
- * Cleanflight and Betaflight and EmuFlight are free software. You can redistribute
+ * Cleanflight and Betaflight are free software. You can redistribute
  * this software and/or modify this software under the terms of the
  * GNU General Public License as published by the Free Software
  * Foundation, either version 3 of the License, or (at your option)
  * any later version.
  *
- * Cleanflight and Betaflight and EmuFlight are distributed in the hope that they
+ * Cleanflight and Betaflight are distributed in the hope that they
  * will be useful, but WITHOUT ANY WARRANTY; without even the implied
  * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU General Public License for more details.
@@ -29,15 +29,12 @@
 #define LED1_PIN                PB7 // PE1 on NUCLEO-H743ZI2 (may collide with UART8_TX)
 //#define LED2_PIN                PB14 // SDMMC2_D0
 
-// Use explicit cache management as per https://github.com/betaflight/betaflight/pull/10378
-#define USE_LEDSTRIP_CACHE_MGMT
-
 // Nucleo-H743 has one button (The blue USER button).
 // Force two buttons to look at the single button so config reset on button works
 #define USE_BUTTONS
-#define BUTTON_A_PIN            PC13
+#define	BUTTON_A_PIN            PC13
 #define BUTTON_A_PIN_INVERTED // Active high
-#define BUTTON_B_PIN            PC13
+#define	BUTTON_B_PIN            PC13
 #define BUTTON_B_PIN_INVERTED // Active high
 
 #define USE_BEEPER
